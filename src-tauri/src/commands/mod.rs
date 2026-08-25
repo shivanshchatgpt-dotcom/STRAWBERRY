@@ -1,0 +1,44 @@
+pub mod chats;
+pub mod folders;
+pub mod roots;
+pub mod search;
+
+use std::sync::Arc;
+
+use crate::db::models::AppInfo;
+use crate::state::AppState;
+
+pub type Cmd<T> = Result<T, String>;
+
+/// Run a blocking closure against app state inside Tauri's blocking thread pool.
+pub(crate) async fn blocking<T, F>(st: Arc<AppState>, f: F) -> Cmd<T>
+where
+    T: Send + 'static,
+    F: FnOnce(&AppState) -> Result<T, String> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(move || f(&st))
+        .await
+        .map_err(|_| crate::error::ERR_JOIN.to_string())?
+}
+
+/// Application information for the Metadata/about surfaces.
+#[tauri::command]
+pub async fn get_app_info(state: tauri::State<'_, Arc<AppState>>) -> Cmd<AppInfo> {
+    let st = state.inner().clone();
+    blocking(st, |app| {
+        let conn = app
+            .conn
+            .lock()
+            .map_err(|_| crate::error::ERR_DB_LOCK.to_string())?;
+        Ok(AppInfo {
+            app_name: "Chat Memory Tree".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            data_dir: app.data_dir.display().to_string(),
+            db_path: app.db_path().display().to_string(),
+            files_dir: app.files_root().display().to_string(),
+            fts_enabled: crate::db::fts_enabled(&conn),
+            sqlite_version: rusqlite::version().to_string(),
+        })
+    })
+    .await
+}
