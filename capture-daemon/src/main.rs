@@ -5,6 +5,7 @@
 //! Run: ./target/release/strawberry-daemon
 
 mod db;
+mod semantic;
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -17,6 +18,11 @@ fn main() {
         match db::insert_capture(kind, &args[3], std::path::Path::new("/tmp/sb-once.txt")) {
             Ok(id) => {
                 println!("INSERTED {id}");
+                if let Err(e) = semantic::index_chat(&id, &args[3]) {
+                    eprintln!("EMBED SKIPPED: {e}");
+                } else {
+                    println!("EMBEDDED {id}");
+                }
                 return;
             }
             Err(e) => {
@@ -24,6 +30,25 @@ fn main() {
                 std::process::exit(1);
             }
         }
+    }
+
+    // Semantic search mode: `--search "natural language query" [limit]`
+    if args.len() >= 3 && args[1] == "--search" {
+        let limit: usize = args.get(3).and_then(|l| l.parse().ok()).unwrap_or(5);
+        match semantic::search(&args[2], limit) {
+            Ok(results) => {
+                println!("🔍 Semantic results for “{}”:", args[2]);
+                for (title, snippet, score) in results {
+                    println!("  [{score:.3}] {title}");
+                    println!("          {snippet}…");
+                }
+            }
+            Err(e) => {
+                eprintln!("SEARCH FAILED: {e}");
+                std::process::exit(1);
+            }
+        }
+        return;
     }
 
     println!("╔═══════════════════════════════════════════╗");
@@ -212,7 +237,15 @@ fn save_capture(kind: &str, text: &str) -> Result<std::path::PathBuf, String> {
 
     // 🔴 PRIMARY storage: straight into the app's FTS5 database.
     match db::insert_capture(kind, text, &path) {
-        Ok(chat_id) => println!("🗄️  Indexed in Strawberry DB → {chat_id}"),
+        Ok(chat_id) => {
+            println!("🗄️  Indexed in Strawberry DB → {chat_id}");
+            // 🧠 Layer 2: semantic index (local Ollama embeddings). Best-effort:
+            // FTS5 already indexed the text; vectors add meaning-based search.
+            match semantic::index_chat(&chat_id, text) {
+                Ok(()) => println!("🧠 Semantic vector stored"),
+                Err(e) => eprintln!("⚠️ Embedding skipped ({e})"),
+            }
+        }
         Err(e) => eprintln!("⚠️ DB index failed (JSON backup saved anyway): {e}"),
     }
     Ok(path)
