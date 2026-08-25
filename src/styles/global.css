@@ -1456,3 +1456,18 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .resume-dismiss { opacity: 0.4; }
 .resume-dismiss:hover { opacity: 1; }
 .resume-more { margin-top: 6px; font-size: 12px; }
+
+.resume-day-btn { margin-top: 10px; }
+.resume-day-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.resume-day-grid h5 {
+  margin: 0 0 6px; font-size: 11.5px; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--text-dim);
+}
+.resume-day-grid ul { list-style: none; margin: 0; padding: 0; }
+.resume-day-grid li { font-size: 13px; padding: 2px 0; word-break: break-word; }
+.resume-day-grid .dim, .dim { color: var(--text-faint); font-size: 11.5px; }

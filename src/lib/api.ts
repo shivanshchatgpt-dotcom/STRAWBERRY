@@ -155,9 +155,16 @@ export const api = {
     call<resume.ResumePoint>("save_resume_point", { chatId }),
   dismissResumePoint: (resumeId: string) =>
     call<void>("dismiss_resume_point", { resumeId }),
+  getDaySummary: () => call<resume.DaySummary>("get_day_summary"),
 };
 
 export namespace resume {
+  export interface DaySummary {
+    lastChats: [string, string][];
+    lastCaptures: [string, string][];
+    openTasks: string[];
+    topIntent: string | null;
+  }
   export interface ResumePoint {
     id: string;
     chatId: string | null;

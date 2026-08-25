@@ -221,3 +221,57 @@ mod tests {
         assert_eq!(list[0].chat_title.as_deref(), Some("Fix login loop"));
     }
 }
+
+/// "Resume My Day" — everything needed to re-enter flow in ~10 seconds.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DaySummary {
+    pub last_chats: Vec<(String, String)>,   // (title, updated_at)
+    pub last_captures: Vec<(String, String)>, // (title, created_at)
+    pub open_tasks: Vec<String>,
+    pub top_intent: Option<String>,
+}
+
+pub fn day_summary(conn: &rusqlite::Connection) -> Result<DaySummary, String> {
+    let last_chats: Vec<(String, String)> = {
+        let mut s = conn
+            .prepare("SELECT title, updated_at FROM chats ORDER BY updated_at DESC LIMIT 5")
+            .map_err(|e| e.to_string())?;
+        let rows = s.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)));
+        match rows {
+            Ok(it) => it.filter_map(|r| r.ok()).collect(),
+            Err(_) => Vec::new(),
+        }
+    };
+
+    let last_captures: Vec<(String, String)> = {
+        let mut s = conn
+            .prepare(
+                "SELECT substr(brief_text,1,60), created_at FROM chats
+                 WHERE source='capture' ORDER BY created_at DESC LIMIT 5",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = s.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)));
+        match rows {
+            Ok(it) => it.filter_map(|r| r.ok()).collect(),
+            Err(_) => Vec::new(),
+        }
+    };
+
+    let open_tasks: Vec<String> = {
+        let mut s = conn
+            .prepare("SELECT title FROM todos WHERE completed=0 ORDER BY priority DESC LIMIT 5")
+            .map_err(|e| e.to_string())?;
+        let rows = s.query_map([], |r| r.get::<_, String>(0));
+        match rows {
+            Ok(it) => it.filter_map(|r| r.ok()).collect(),
+            Err(_) => Vec::new(),
+        }
+    };
+
+    let top_intent = suggestions(conn, 1)
+        .ok()
+        .and_then(|v| v.first().map(|p| p.intent.clone()));
+
+    Ok(DaySummary { last_chats, last_captures, open_tasks, top_intent })
+}

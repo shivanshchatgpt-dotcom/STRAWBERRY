@@ -55,3 +55,18 @@ pub async fn dismiss_resume_point(
     })
     .await
 }
+
+#[tauri::command]
+pub async fn get_day_summary(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Cmd<crate::resume::DaySummary> {
+    let st = state.inner().clone();
+    super::blocking(st, |app| {
+        let conn = app
+            .conn
+            .lock()
+            .map_err(|_| crate::error::ERR_DB_LOCK.to_string())?;
+        crate::resume::day_summary(&conn)
+    })
+    .await
+}

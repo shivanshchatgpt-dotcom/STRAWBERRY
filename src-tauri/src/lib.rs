@@ -63,6 +63,7 @@ pub fn run() {
             commands::resume::get_resume_suggestions,
             commands::resume::save_resume_point,
             commands::resume::dismiss_resume_point,
+            commands::resume::get_day_summary,
             commands::get_app_info,
         ])
         .run(tauri::generate_context!())
