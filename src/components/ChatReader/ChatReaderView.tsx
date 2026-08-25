@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { api } from "../../lib/api";
 import { useAppStore } from "../../store/appStore";
 import { Breadcrumb } from "../Breadcrumb/Breadcrumb";
 import { TreePanel } from "../Tree/TreePanel";
@@ -158,16 +159,42 @@ export function ChatReaderView() {
 }
 
 function ActionItemsSection({ items }: { items: ChatArtifact[] }) {
+  const [added, setAdded] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState<string | null>(null);
+
   if (items.length === 0) return null;
+
+  const makeTask = async (a: ChatArtifact) => {
+    if (added.has(a.id) || busy) return;
+    setBusy(a.id);
+    try {
+      await api.addTodo(a.content.slice(0, 200), "medium", null);
+      setAdded((prev) => new Set(prev).add(a.id));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <>
       <div className="list-separator">Action Items</div>
       <div className="artifact-list">
         {items.map((a) => (
-          <div key={a.id} className="artifact-item">
-            {a.content}
+          <div key={a.id} className="artifact-item artifact-with-task">
+            <span className="artifact-text">{a.content}</span>
+            <button
+              className={`btn task-from-chat${added.has(a.id) ? " added" : ""}`}
+              disabled={added.has(a.id) || busy === a.id}
+              title={added.has(a.id) ? "Task created" : "Create a task from this"}
+              onClick={() => void makeTask(a)}
+            >
+              {added.has(a.id) ? "✓ Task" : busy === a.id ? "…" : "+ Task"}
+            </button>
           </div>
         ))}
+      </div>
+      <div className="text-dim artifact-hint">
+        + Task → Dashboard ke Tasks me chala jayega
       </div>
     </>
   );

@@ -1471,3 +1471,25 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .resume-day-grid ul { list-style: none; margin: 0; padding: 0; }
 .resume-day-grid li { font-size: 13px; padding: 2px 0; word-break: break-word; }
 .resume-day-grid .dim, .dim { color: var(--text-faint); font-size: 11.5px; }
+
+/* + Task from chat */
+.artifact-with-task {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.artifact-text { flex: 1; word-break: break-word; }
+.task-from-chat {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+  color: var(--berry);
+}
+.task-from-chat:hover:not(:disabled) { background: rgba(225,29,72,0.1); }
+.task-from-chat.added {
+  color: var(--accent-dim);
+  background: rgba(16,185,129,0.1);
+}
+.artifact-hint { margin-top: 6px; font-size: 12px; }
