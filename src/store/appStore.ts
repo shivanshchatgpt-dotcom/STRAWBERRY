@@ -3,6 +3,7 @@ import { api } from "../lib/api";
 import type {
   BreadcrumbItem,
   ChatDetail,
+  HandoffExport,
   NodeSummary,
   Root,
   SearchScopeKind,
@@ -66,6 +67,11 @@ interface AppState {
   chatDetail: ChatDetail | null;
   appError: string | null;
 
+  /** Handoff packet for the open chat; null until built. */
+  handoff: HandoffExport | null;
+  handoffBudget: number;
+  handoffLoading: boolean;
+
   // search
   searchQuery: string;
   searchScope: SearchScope | null;
@@ -110,6 +116,12 @@ interface AppState {
   deleteChat: (target: DeleteTarget) => Promise<boolean>;
   renameChat: (chatId: string, title: string) => Promise<boolean>;
   regenerateBrief: () => Promise<void>;
+
+  /** Build the handoff packet for the open chat at the current budget. */
+  buildHandoff: () => Promise<void>;
+  setHandoffBudget: (tokens: number) => void;
+  /** Copy text to the clipboard and toast the outcome. */
+  copyText: (text: string, what: string) => Promise<void>;
 
   setSearchQuery: (q: string) => void;
   setSearchScope: (scope: SearchScope) => void;
@@ -196,6 +208,11 @@ export const useAppStore = create<AppState>((set, get) => {
     chatDetail: null,
     appError: null,
 
+    handoff: null,
+    // Matches strawberry_core::handoff::DEFAULT_TOKEN_BUDGET.
+    handoffBudget: 700,
+    handoffLoading: false,
+
     searchQuery: "",
     searchScope: null,
     searchResults: null,
@@ -227,6 +244,7 @@ export const useAppStore = create<AppState>((set, get) => {
         currentNodeId: null,
         currentChatId: null,
         chatDetail: null,
+        handoff: null,
         breadcrumb: [{ id: root.id, label: root.name, kind: "root" }],
       });
       await fetchChildrenInto(rootId, null);
@@ -251,6 +269,7 @@ export const useAppStore = create<AppState>((set, get) => {
         currentNodeId: nodeId,
         currentChatId: null,
         chatDetail: null,
+        handoff: null,
         breadcrumb: [
           ...s.breadcrumb.filter((b) => b.id !== nodeId),
           { id: node.id, label: node.name, kind: "folder" },
@@ -266,6 +285,8 @@ export const useAppStore = create<AppState>((set, get) => {
         set({
           currentChatId: chatId,
           chatDetail: detail,
+          // Stale packet from the previously open chat must never linger.
+          handoff: null,
           currentNodeId: null,
           breadcrumb: crumbs,
           currentRootId: detail.meta.rootId,
@@ -286,6 +307,7 @@ export const useAppStore = create<AppState>((set, get) => {
         currentNodeId: null,
         currentChatId: null,
         chatDetail: null,
+        handoff: null,
         breadcrumb: [],
         searchResults: null,
       });
@@ -521,7 +543,7 @@ export const useAppStore = create<AppState>((set, get) => {
         if (s.currentChatId === target.chatId) {
           // Return to the containing folder (or root) after deletion.
           const nodeId = s.chatDetail?.meta.nodeId;
-          set({ currentChatId: null, chatDetail: null });
+          set({ currentChatId: null, chatDetail: null, handoff: null });
           if (nodeId) {
             const node = await findNode(nodeId);
             if (node?.parentId != null) {
@@ -569,12 +591,51 @@ export const useAppStore = create<AppState>((set, get) => {
       set({ busy: true });
       try {
         const detail = await api.regenerateBrief(s.currentChatId);
-        set({ chatDetail: detail });
+        // Artifacts changed, so any packet built from the old ones is stale.
+        set({ chatDetail: detail, handoff: null });
         get().showToast("success", "Brief regenerated");
       } catch (e) {
         fail(e);
       } finally {
         set({ busy: false });
+      }
+    },
+
+    // --------------------------------------------------------------- handoff
+
+    buildHandoff: async () => {
+      const s = get();
+      if (!s.currentChatId) return;
+      set({ handoffLoading: true });
+      try {
+        const result = await api.exportHandoff(
+          s.currentChatId,
+          s.handoffBudget,
+        );
+        set({ handoff: result });
+      } catch (e) {
+        fail(e);
+      } finally {
+        set({ handoffLoading: false });
+      }
+    },
+
+    setHandoffBudget: (tokens) => {
+      // Clamped to the same range the Rust command enforces.
+      const clamped = Math.min(8000, Math.max(120, Math.round(tokens)));
+      set({ handoffBudget: clamped, handoff: null });
+    },
+
+    copyText: async (text, what) => {
+      try {
+        await navigator.clipboard.writeText(text);
+        get().showToast("success", `${what} copied to clipboard`);
+      } catch {
+        // Clipboard access can be refused; the textarea remains selectable.
+        get().showToast(
+          "error",
+          `Could not copy ${what}. Select the text and copy manually.`,
+        );
       }
     },
 

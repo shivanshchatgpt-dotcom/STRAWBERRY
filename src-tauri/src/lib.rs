@@ -42,6 +42,8 @@ pub fn run() {
             commands::chats::move_chat,
             commands::chats::update_chat_metadata,
             commands::chats::regenerate_brief,
+            commands::handoff::export_handoff,
+            commands::handoff::handoff_from_text,
             commands::search::search_chats,
             commands::planner::get_todos,
             commands::planner::add_todo,

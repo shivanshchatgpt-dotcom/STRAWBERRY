@@ -50,7 +50,10 @@ export type ArtifactType =
   | "action_item"
   | "heading"
   | "question"
-  | "answer";
+  | "answer"
+  | "rejected"
+  | "constraint"
+  | "identifier";
 
 export interface ChatArtifact {
   id: string;
@@ -113,4 +116,82 @@ export const ARTIFACT_LABELS: Record<ArtifactType, string> = {
   heading: "Heading",
   question: "Question",
   answer: "Key Point",
+  rejected: "Rejected",
+  constraint: "Constraint",
+  identifier: "Identifier",
+};
+
+// ---------------------------------------------------------------------------
+// AI-to-AI handoff packet
+// ---------------------------------------------------------------------------
+
+export type HandoffSlot =
+  | "goal"
+  | "decisions"
+  | "rejected"
+  | "identifiers"
+  | "state"
+  | "next_steps"
+  | "open_questions"
+  | "constraints";
+
+export interface RejectedEntry {
+  what: string;
+  why?: string;
+}
+
+export interface SlotReport {
+  slot: HandoffSlot;
+  kept: number;
+  dropped: number;
+}
+
+export interface HandoffPointer {
+  chatId?: string;
+  originalWords: number;
+  originalChars: number;
+  originalRetained: boolean;
+}
+
+export interface BudgetReport {
+  tokenBudget: number;
+  originalTokens: number;
+  packetTokens: number;
+  reductionPct: number;
+  overBudget: boolean;
+  slots: SlotReport[];
+}
+
+export interface HandoffPacket {
+  version: number;
+  title: string;
+  goal?: string;
+  decisions: string[];
+  rejected: RejectedEntry[];
+  identifiers: string[];
+  state: string[];
+  nextSteps: string[];
+  openQuestions: string[];
+  constraints: string[];
+  pointer: HandoffPointer;
+  budget: BudgetReport;
+}
+
+export interface HandoffExport {
+  /** Paste-ready block for another AI's chat box. */
+  rendered: string;
+  /** `.strawberry.json` interchange form. */
+  json: string;
+  packet: HandoffPacket;
+}
+
+export const SLOT_LABELS: Record<HandoffSlot, string> = {
+  goal: "Goal",
+  decisions: "Decided",
+  rejected: "Rejected",
+  identifiers: "Identifiers",
+  state: "State",
+  next_steps: "Next",
+  open_questions: "Open",
+  constraints: "Rules",
 };

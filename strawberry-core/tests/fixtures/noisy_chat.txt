@@ -1,0 +1,185 @@
+User:
+bro mujhe ek chat compressor banana hai
+
+Assistant:
+Sure! Let me help you with that. Let me first understand what you need.
+
+I'll start by looking at the requirements.
+
+User:
+haan
+
+Assistant:
+Let me check the existing structure of your project first.
+
+Auto-approved by your global config, matched `bash` rule `*`
+
+```bash
+ls -la /home/user/project && find . -type f -name "*.rs" | head -20
+```
+
+Okay, I can see the project structure now. Let me look at the main file.
+
+**Keep the response concise but this deserves a short summary. The user speaks Hinglish — I'll reply in Hinglish, brief.**
+
+Theek hai, main samajh gaya. Let me now check the config file.
+
+User:
+ok
+
+Assistant:
+Let me verify the config is loaded properly.
+
+```bash
+cat ~/.config/app/config.yaml
+```
+
+Good. Now let me think about the approach here.
+
+There are a few options we could consider:
+1. Use an LLM to summarize each chat
+2. Use deterministic rules
+3. Use embeddings to cluster and pick representative sentences
+
+Let me evaluate each one carefully.
+
+For option 1, we would send the chat to an API. But we decided to use deterministic rules only, zero LLM calls, because the whole point is that it must run offline.
+
+User:
+haan bilkul offline hona chahiye
+
+Assistant:
+Exactly. Let me now start implementing.
+
+Auto-approved by your global config, matched `bash` rule `*`
+
+```bash
+cargo new compressor --lib && cd compressor
+```
+
+Created the crate. Now let me add dependencies.
+
+I tried using the Wayland clipboard API first but it didn't work because permission was denied by the compositor.
+
+So instead I'll poll the clipboard on a timer. Not elegant but reliable.
+
+Let me update the Cargo.toml now.
+
+```toml
+[dependencies]
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+```
+
+Good, that compiled. Let me check the build output.
+
+```bash
+cargo build 2>&1 | tail -5
+```
+
+Build succeeded. Let me now write the extraction logic.
+
+User:
+thanks bhai
+
+Assistant:
+No problem! Let me continue.
+
+Now I need to think about the database layer. Let me consider the options.
+
+I initially reached for sqlx but reverted the sqlx migration in favor of rusqlite because the async overhead was pointless for a local single-user file.
+
+Let me set that up.
+
+```bash
+cargo add rusqlite --features bundled
+```
+
+Okay that's added. Let me now create the schema.
+
+```sql
+CREATE TABLE IF NOT EXISTS chat_artifacts (
+    id TEXT PRIMARY KEY,
+    chat_id TEXT NOT NULL,
+    artifact_type TEXT NOT NULL,
+    content TEXT NOT NULL
+);
+```
+
+Schema created. Let me verify it works.
+
+```bash
+sqlite3 test.db < schema.sql && echo "ok"
+```
+
+Verified. Now the API key setup.
+
+Set HERMES_CUSTOM_API_KEY in ~/.hermes/.env for the gateway.
+
+The daemon must never call the network for compression itself.
+
+Let me restart the app to pick up the new env.
+
+```bash
+pkill -f app && sleep 2 && ./app &
+```
+
+App restarted. Let me confirm the new process loaded the key.
+
+```bash
+ps aux | grep app | grep -v grep
+```
+
+Process is up. Let me check the logs.
+
+User:
+acha
+
+Assistant:
+Let me check whether the server is responding.
+
+```bash
+curl -s localhost:1420/health
+```
+
+Hmm, that returned nothing. Let me check the port.
+
+Error: embedding failed with 500 from the local server.
+
+Let me investigate that error.
+
+```bash
+journalctl -u app -n 20 --no-pager
+```
+
+I see the problem. The embedding model wasn't pulled.
+
+Let me fix that.
+
+```bash
+ollama pull nomic-embed-text
+```
+
+Model pulled. Let me retry.
+
+That worked now. The embedding is stored.
+
+User:
+nice
+
+Assistant:
+Let me summarize where we are.
+
+We tried the polling interval at 100ms but it didn't work because the CPU usage spiked to 40%.
+
+So I moved it to 400ms which is imperceptible to a human and costs nothing.
+
+TODO: wire the hotkey into the daemon so the user does not have to click.
+
+TODO: add a Copy Handoff button in the reader UI.
+
+Should we cap the packet at 700 tokens by default?
+
+Everything must stay offline.
+
+Let me know what you want next.

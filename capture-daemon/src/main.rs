@@ -1,18 +1,24 @@
-//! 🍓 STRAWBERRY Capture Daemon — REAL popup on every copy.
+//! 🍓 STRAWBERRY Capture Daemon — clipboard capture + AI-to-AI handoff.
+//!
 //! Cross-platform core (Rust): Windows/macOS via arboard,
 //! Linux auto-detects Wayland (wl-clipboard-rs) vs X11 (arboard).
 //!
 //! Run: ./target/release/strawberry-daemon
 
+mod clip;
 mod db;
+mod handoff;
 mod semantic;
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use strawberry_core::handoff as core_handoff;
+
 fn main() {
+    let args: Vec<String> = std::env::args().collect();
+
     // One-shot mode: `--save-once <kind> <text>` → DB insert + JSON, then exit.
     // Used for scripted verification of the Layer-1 pipeline.
-    let args: Vec<String> = std::env::args().collect();
     if args.len() >= 4 && args[1] == "--save-once" {
         let kind = Box::leak(args[2].clone().into_boxed_str());
         match db::insert_capture(kind, &args[3], std::path::Path::new("/tmp/sb-once.txt")) {
@@ -51,60 +57,173 @@ fn main() {
         return;
     }
 
+    // Handoff on demand: `--handoff [budget]` compresses whatever is on the
+    // clipboard right now and writes the packet back to the clipboard.
+    //
+    // On Wayland this stays in the foreground serving the selection (exactly
+    // like `wl-copy` without `-f`), so it does not return until another app
+    // replaces the clipboard. Press Ctrl+C once you have pasted.
+    if args.len() >= 2 && args[1] == "--handoff" {
+        let budget: usize = args
+            .get(2)
+            .and_then(|b| b.parse().ok())
+            .unwrap_or(core_handoff::DEFAULT_TOKEN_BUDGET);
+        let backend = clip::detect();
+        let Some(text) = clip::read(backend) else {
+            eprintln!("❌ Clipboard is empty or not text");
+            std::process::exit(1);
+        };
+        if !handoff::is_compressible(&text) {
+            eprintln!("❌ Clipboard text too short to compress");
+            std::process::exit(1);
+        }
+        match compress_to_clipboard(backend, &text, budget, clip::Persist::BlockUntilReplaced) {
+            Ok(report) => println!("{report}"),
+            Err(e) => {
+                eprintln!("❌ Handoff failed: {e}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
+
+    // Print the packet to stdout instead of the clipboard (for piping/tests).
+    if args.len() >= 2 && args[1] == "--handoff-stdout" {
+        let budget: usize = args
+            .get(2)
+            .and_then(|b| b.parse().ok())
+            .unwrap_or(core_handoff::DEFAULT_TOKEN_BUDGET);
+        let mut text = String::new();
+        use std::io::Read;
+        if std::io::stdin().read_to_string(&mut text).is_err() || text.trim().is_empty() {
+            eprintln!("❌ No text on stdin");
+            std::process::exit(1);
+        }
+        let packet =
+            core_handoff::build_from_raw(&handoff::title_for(&text), None, &text, budget);
+        print!("{}", core_handoff::render(&packet));
+        return;
+    }
+
     println!("╔═══════════════════════════════════════════╗");
     println!("║  🍓 STRAWBERRY CAPTURE DAEMON — LIVE      ║");
     println!("║  Copy anything → popup → click to save    ║");
+    println!("║  Copy chat, then copy  sb!  → handoff     ║");
     println!("╚═══════════════════════════════════════════╝");
 
-    let on_wayland = std::env::var("WAYLAND_DISPLAY")
-        .map(|v| !v.is_empty())
-        .unwrap_or(false);
+    let backend = clip::detect();
+    println!("🪟 Backend: {}", backend.label());
+    println!(
+        "🔑 Handoff trigger: copy your chat, then copy one of {:?}",
+        handoff::TRIGGERS
+    );
 
-    let mut last = String::new();
+    // Last substantial clipboard text — the compression candidate.
+    // Seeded from the current clipboard so a packet left over from a previous
+    // session is never re-captured or treated as pending on startup.
+    let mut pending: Option<String> = None;
+    let mut last = clip::read(backend).unwrap_or_default();
+    println!("📋 Clipboard on start: {} chars", last.chars().count());
+    let poll = match backend {
+        clip::Backend::Wayland => Duration::from_millis(500),
+        clip::Backend::Native => Duration::from_millis(400),
+    };
 
-    if on_wayland {
-        println!("🪟 Backend: Wayland (wl-clipboard poll)");
-        use std::io::Read;
-        use wl_clipboard_rs::paste::ClipboardType;
-        loop {
-            let ok = wl_clipboard_rs::paste::get_contents(
-                ClipboardType::Regular,
-                wl_clipboard_rs::paste::Seat::Unspecified,
-                wl_clipboard_rs::paste::MimeType::Specific("text/plain"),
-            )
-            .ok()
-            .and_then(|(mut pipe, _)| {
-                let mut buf = String::new();
-                pipe.read_to_string(&mut buf).ok()?;
-                Some(buf)
-            });
-            if let Some(text) = ok {
-                if text != last && text.trim().chars().count() >= 4 && text.len() <= 20_000 {
-                    last = text.clone();
-                    handle_capture(text);
+    loop {
+        if let Some(text) = clip::read(backend) {
+            if text != last {
+                last = text.clone();
+
+                if handoff::is_trigger(&text) {
+                    match pending.clone() {
+                        Some(source) => {
+                            println!("🍓 Handoff trigger — compressing {} chars…", source.chars().count());
+                            match compress_to_clipboard(
+                                backend,
+                                &source,
+                                core_handoff::DEFAULT_TOKEN_BUDGET,
+                                clip::Persist::WhileRunning,
+                            ) {
+                                Ok(report) => {
+                                    println!("{report}");
+                                    // The clipboard now holds the packet, not
+                                    // the trigger; keep `last` in sync so the
+                                    // next poll does not re-capture it.
+                                    last = clip::read(backend).unwrap_or_default();
+                                }
+                                Err(e) => {
+                                    eprintln!("❌ Handoff failed: {e}");
+                                    notify("🍓 Handoff failed", &e);
+                                }
+                            }
+                        }
+                        None => {
+                            println!("⚠️ Trigger seen but nothing copied yet");
+                            notify(
+                                "🍓 Nothing to compress",
+                                "Copy the chat first, then copy the trigger again.",
+                            );
+                        }
+                    }
+                } else if text.trim().chars().count() >= 4 && text.len() <= 200_000 {
+                    // Never re-capture our own handoff packets (e.g. the user
+                    // pasted one back, or it resurfaced via a clipboard manager).
+                    if handoff::is_trigger(&text) || text.contains("[STRAWBERRY HANDOFF v1") {
+                        last = text;
+                        continue;
+                    }
+                    if handoff::is_compressible(&text) {
+                        pending = Some(text.clone());
+                    }
+                    // Capture popups stay limited to modest snippets; a whole
+                    // pasted chat is a handoff candidate, not a capture.
+                    if text.len() <= 20_000 {
+                        handle_capture(text);
+                    }
                 }
             }
-            std::thread::sleep(Duration::from_millis(500));
         }
-    } else {
-        println!("🪟 Backend: X11 / native OS (arboard)");
-        let mut clipboard = match arboard::Clipboard::new() {
-            Ok(c) => c,
-            Err(e) => {
-                eprintln!("❌ Cannot access clipboard: {e}");
-                std::process::exit(1);
-            }
-        };
-        loop {
-            if let Ok(text) = clipboard.get_text() {
-                if text != last && text.trim().chars().count() >= 4 && text.len() <= 20_000 {
-                    last = text.clone();
-                    handle_capture(text);
-                }
-            }
-            std::thread::sleep(Duration::from_millis(400));
-        }
+        std::thread::sleep(poll);
     }
+}
+
+/// Compress `source`, put the packet on the clipboard, notify, and return a
+/// one-line report for the console.
+///
+/// With [`clip::Persist::UntilPasted`] the clipboard write blocks on Wayland,
+/// so the notification is raised *before* it: otherwise the user would see no
+/// feedback until they had already pasted.
+fn compress_to_clipboard(
+    backend: clip::Backend,
+    source: &str,
+    budget: usize,
+    persist: clip::Persist,
+) -> Result<String, String> {
+    let title = handoff::title_for(source);
+    let packet = core_handoff::build_from_raw(&title, None, source, budget);
+    let rendered = core_handoff::render(&packet);
+
+    let b = &packet.budget;
+    let summary = format!(
+        "{} → {} tokens ({}% smaller) · {} rejected, {} ids kept",
+        b.original_tokens,
+        b.packet_tokens,
+        b.reduction_pct,
+        packet.rejected.len(),
+        packet.identifiers.len()
+    );
+    notify("🍓 Handoff ready — paste it", &summary);
+
+    clip::write(backend, &rendered, persist)?;
+    Ok(format!("✅ Clipboard now holds the handoff packet: {summary}"))
+}
+
+fn notify(summary: &str, body: &str) {
+    let _ = notify_rust::Notification::new()
+        .summary(summary)
+        .body(body)
+        .timeout(notify_rust::Timeout::Milliseconds(5000))
+        .show();
 }
 
 /// Classify → popup → save on action click.
@@ -132,16 +251,15 @@ fn classify(text: &str) -> &'static str {
         return "url";
     }
     const CMDS: &[&str] = &[
-        "npm ", "pnpm ", "yarn ", "cargo ", "git ", "docker ", "pip ", "pip3 ",
-        "python", "node ", "make ", "pacman ", "systemctl ", "sudo ",
+        "npm ", "pnpm ", "yarn ", "cargo ", "git ", "docker ", "pip ", "pip3 ", "python",
+        "node ", "make ", "pacman ", "systemctl ", "sudo ",
     ];
     for c in CMDS {
         if low.starts_with(c) {
             return "command";
         }
     }
-    const ERRS: &[&str] =
-        &["error", "exception", "traceback", "failed", "panic:", "fatal"];
+    const ERRS: &[&str] = &["error", "exception", "traceback", "failed", "panic:", "fatal"];
     if ERRS.iter().any(|k| low.contains(k)) {
         return "error";
     }
@@ -161,13 +279,17 @@ fn classify(text: &str) -> &'static str {
 /// Show the strawberry popup. Clicking the action saves the capture.
 fn show_popup(kind: &'static str, text: String) {
     std::thread::spawn(move || {
-        let preview: String = text.chars().take(80).map(|c| if c == '\n' { ' ' } else { c }).collect();
+        let preview: String = text
+            .chars()
+            .take(80)
+            .map(|c| if c == '\n' { ' ' } else { c })
+            .collect();
         let body = format!("Add this {kind} to Strawberry?\n“{preview}…”");
 
         match notify_rust::Notification::new()
             .summary("🍓 Strawberry")
             .body(&body)
-            .actions(vec!["save".to_string(), "🍓 Add to Strawberry".to_string()])
+            .action("save", "🍓 Add to Strawberry")
             .timeout(notify_rust::Timeout::Milliseconds(9000))
             .show()
         {
@@ -261,5 +383,15 @@ mod tests {
         assert_eq!(super::classify("Error: cannot find module"), "error");
         assert_eq!(super::classify("fn main() { println!(\"hi\"); }"), "code");
         assert_eq!(super::classify("remember to buy strawberries"), "note");
+    }
+
+    /// The trigger token must never be mistaken for a compression candidate,
+    /// or copying it would overwrite the very text it is meant to compress.
+    #[test]
+    fn trigger_is_not_compressible() {
+        for t in super::handoff::TRIGGERS {
+            assert!(super::handoff::is_trigger(t));
+            assert!(!super::handoff::is_compressible(t));
+        }
     }
 }

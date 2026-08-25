@@ -75,9 +75,11 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
             chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
             artifact_type TEXT NOT NULL CHECK(artifact_type IN (
                 'code','error','command','url','decision','action_item',
-                'heading','question','answer')),
+                'heading','question','answer',
+                'rejected','constraint','identifier')),
             content TEXT NOT NULL, created_at TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS idx_chat_artifacts_chat_id ON chat_artifacts(chat_id);
+        CREATE INDEX IF NOT EXISTS idx_chat_artifacts_type ON chat_artifacts(artifact_type);
         "#,
     )
     .map_err(|e| e.to_string())?;
@@ -227,11 +229,30 @@ pub fn insert_capture(kind: &str, text: &str, raw_file: &Path) -> Result<String,
 }
 
 #[cfg(test)]
+pub(crate) mod test_env {
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    /// Serializes tests that override the process-wide `XDG_DATA_HOME`.
+    ///
+    /// `set_var` is global to the process, so two tests pointing it at
+    /// different temp dirs in parallel will read each other's database. This
+    /// lock makes the override effectively single-threaded.
+    pub fn lock() -> MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn insert_and_search_roundtrip() {
+        let _guard = test_env::lock();
+
         // Use a temp override via XDG_DATA_HOME.
         let dir = std::env::temp_dir().join(format!("sb-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -257,6 +278,18 @@ mod tests {
         let id2 = insert_capture("note", "second unique note alpha", &raw).unwrap();
         assert_ne!(id, id2);
 
+        // The widened CHECK constraint must accept the handoff artifact types.
+        let now = now_iso();
+        for (i, kind) in ["rejected", "constraint", "identifier"].iter().enumerate() {
+            conn.execute(
+                "INSERT INTO chat_artifacts(id,chat_id,artifact_type,content,created_at)
+                 VALUES(?1,?2,?3,'x',?4)",
+                rusqlite::params![format!("art-{i}"), id, kind, now],
+            )
+            .unwrap_or_else(|e| panic!("daemon schema rejected {kind}: {e}"));
+        }
+
+        drop(conn);
         std::env::remove_var("XDG_DATA_HOME");
         let _ = std::fs::remove_dir_all(dir);
     }

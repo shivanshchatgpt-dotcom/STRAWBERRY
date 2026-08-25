@@ -3,6 +3,7 @@ import type {
   AppInfo,
   BreadcrumbItem,
   ChatDetail,
+  HandoffExport,
   NodeSummary,
   Root,
   SearchScopeKind,
@@ -100,6 +101,18 @@ export const api = {
 
   regenerateBrief: (chatId: string) =>
     call<ChatDetail>("regenerate_brief", { chatId }),
+
+  // Handoff -------------------------------------------------------------------
+  /** Compress a saved chat into an AI-to-AI handoff packet. */
+  exportHandoff: (chatId: string, tokenBudget: number | null) =>
+    call<HandoffExport>("export_handoff", { chatId, tokenBudget }),
+
+  /** Compress pasted text without saving it first. */
+  handoffFromText: (
+    title: string,
+    text: string,
+    tokenBudget: number | null,
+  ) => call<HandoffExport>("handoff_from_text", { title, text, tokenBudget }),
 
   // Search --------------------------------------------------------------------
   searchChats: (

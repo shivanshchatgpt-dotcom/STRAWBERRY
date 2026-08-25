@@ -6,6 +6,7 @@ import { TabBar } from "../Tabs/TabBar";
 import { BriefTab } from "./BriefTab";
 import { OriginalTab } from "./OriginalTab";
 import { ArtifactsTab } from "./ArtifactsTab";
+import { HandoffTab } from "./HandoffTab";
 import { MetadataTab } from "./MetadataTab";
 import type { ChatArtifact, ArtifactType } from "../../lib/types";
 
@@ -16,11 +17,13 @@ export interface ReaderTab {
 
 const TABS: ReaderTab[] = [
   { id: "brief", label: "Brief" },
+  { id: "handoff", label: "🍓 Handoff" },
   { id: "original", label: "Original" },
   { id: "code", label: "Code" },
   { id: "errors", label: "Errors" },
   { id: "commands", label: "Commands" },
   { id: "decisions", label: "Decisions" },
+  { id: "identifiers", label: "Identifiers" },
   { id: "metadata", label: "Metadata" },
 ];
 
@@ -74,6 +77,16 @@ export function ChatReaderView() {
               ↻ Regenerate Brief
             </button>
             <button
+              className="btn primary"
+              onClick={() => {
+                setActiveTab("handoff");
+                void useAppStore.getState().buildHandoff();
+              }}
+              title="Compress this chat into a packet for another AI"
+            >
+              🍓 Handoff
+            </button>
+            <button
               className="btn"
               onClick={() =>
                 openDialog({
@@ -107,6 +120,7 @@ export function ChatReaderView() {
         <TabBar tabs={TABS} active={activeTab} onSelect={setActiveTab} />
 
         {activeTab === "brief" && <BriefTab markdown={detail.briefMarkdown} />}
+        {activeTab === "handoff" && <HandoffTab />}
         {activeTab === "original" && (
           <OriginalTab chatId={detail.meta.chatId} />
         )}
@@ -123,7 +137,18 @@ export function ChatReaderView() {
               artifacts={byType("decision")}
               emptyText="No decision-like lines were detected."
             />
+            <RejectedSection items={byType("rejected")} />
             <ActionItemsSection items={byType("action_item")} />
+          </>
+        )}
+        {activeTab === "identifiers" && (
+          <>
+            <ArtifactsTab
+              artifacts={byType("identifier")}
+              mono
+              emptyText="No env vars, ports, tables or versions were detected."
+            />
+            <ConstraintsSection items={byType("constraint")} />
           </>
         )}
         {activeTab === "metadata" && <MetadataTab />}
@@ -137,6 +162,43 @@ function ActionItemsSection({ items }: { items: ChatArtifact[] }) {
   return (
     <>
       <div className="list-separator">Action Items</div>
+      <div className="artifact-list">
+        {items.map((a) => (
+          <div key={a.id} className="artifact-item">
+            {a.content}
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+/**
+ * Negative knowledge: approaches already tried and abandoned, with the reason
+ * when the chat stated one. Shown next to decisions because the pair is what
+ * stops a fresh reader from re-proposing a dead end.
+ */
+function RejectedSection({ items }: { items: ChatArtifact[] }) {
+  if (items.length === 0) return null;
+  return (
+    <>
+      <div className="list-separator">Rejected / Already Tried</div>
+      <div className="artifact-list">
+        {items.map((a) => (
+          <div key={a.id} className="artifact-item">
+            {a.content}
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function ConstraintsSection({ items }: { items: ChatArtifact[] }) {
+  if (items.length === 0) return null;
+  return (
+    <>
+      <div className="list-separator">Constraints</div>
       <div className="artifact-list">
         {items.map((a) => (
           <div key={a.id} className="artifact-item">

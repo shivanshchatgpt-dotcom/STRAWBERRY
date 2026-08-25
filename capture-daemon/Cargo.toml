@@ -4,6 +4,7 @@ version = "0.3.0"
 edition = "2021"
 
 [dependencies]
+strawberry-core = { path = "../strawberry-core" }
 arboard = "3.4"
 notify-rust = "4"
 serde_json = "1"

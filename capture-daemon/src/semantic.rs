@@ -150,6 +150,9 @@ mod tests {
 
     #[test]
     fn embed_and_search_roundtrip_live_ollama() {
+        // Shares the process-wide XDG_DATA_HOME override with the db tests.
+        let _guard = crate::db::test_env::lock();
+
         // Requires ollama with nomic-embed-text — skipped silently if absent.
         let ollama_up = std::process::Command::new("curl")
             .args(["-s", "-o", "/dev/null", "http://localhost:11434"])

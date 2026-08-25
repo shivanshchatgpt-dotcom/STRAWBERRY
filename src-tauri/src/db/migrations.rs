@@ -2,6 +2,7 @@ use rusqlite::Connection;
 
 const MIGRATION_V1: &str = include_str!("../../migrations/001_init.sql");
 const MIGRATION_V2: &str = include_str!("../../migrations/002_planner.sql");
+const MIGRATION_V3: &str = include_str!("../../migrations/003_handoff.sql");
 
 /// Apply pending schema migrations, tracked in `schema_migrations`.
 pub fn run(conn: &mut Connection) -> Result<(), String> {
@@ -49,6 +50,18 @@ pub fn run(conn: &mut Connection) -> Result<(), String> {
         )
         .map_err(crate::error::to_string_err(
             "migration 002 failed to record",
+        ))?;
+    }
+
+    if !applied.contains(&3) {
+        tx.execute_batch(MIGRATION_V3)
+            .map_err(crate::error::to_string_err("migration 003 failed"))?;
+        tx.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (3, ?1)",
+            [crate::db::now_iso()],
+        )
+        .map_err(crate::error::to_string_err(
+            "migration 003 failed to record",
         ))?;
     }
 
@@ -133,4 +146,124 @@ fn set_fts_flag(conn: &Connection, enabled: bool) -> Result<(), String> {
     )
     .map_err(crate::error::to_string_err("failed to store fts flag"))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn seed_chat(conn: &Connection) {
+        let now = crate::db::now_iso();
+        conn.execute(
+            "INSERT INTO roots(id,name,color,icon,created_at,updated_at)
+             VALUES('r','R',NULL,NULL,?1,?1)",
+            [&now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO nodes(id,root_id,parent_id,type,name,position,created_at,updated_at)
+             VALUES('n','r',NULL,'chat','C',0,?1,?1)",
+            [&now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO chats(id,node_id,title,source,raw_path,created_at,updated_at)
+             VALUES('c','n','C','manual','/tmp/x',?1,?1)",
+            [&now],
+        )
+        .unwrap();
+    }
+
+    /// Migration 003 rebuilds `chat_artifacts` to widen its CHECK constraint.
+    /// A rebuild is the one migration shape that can silently lose rows, so
+    /// this asserts both halves: old rows survive, new types are accepted.
+    #[test]
+    fn migration_003_preserves_rows_and_widens_check() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+
+        // Apply only 001 + 002 to simulate an existing pre-003 database.
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS schema_migrations (
+                version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);",
+        )
+        .unwrap();
+        conn.execute_batch(MIGRATION_V1).unwrap();
+        conn.execute_batch(MIGRATION_V2).unwrap();
+        conn.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (1,'t'),(2,'t')",
+            [],
+        )
+        .unwrap();
+        seed_chat(&conn);
+
+        let now = crate::db::now_iso();
+        conn.execute(
+            "INSERT INTO chat_artifacts(id,chat_id,artifact_type,content,created_at)
+             VALUES('a1','c','decision','keep rusqlite',?1)",
+            [&now],
+        )
+        .unwrap();
+        // The pre-003 schema must reject the new type.
+        assert!(conn
+            .execute(
+                "INSERT INTO chat_artifacts(id,chat_id,artifact_type,content,created_at)
+                 VALUES('a2','c','rejected','sqlx',?1)",
+                [&now],
+            )
+            .is_err());
+
+        run(&mut conn).expect("migration 003 must apply");
+
+        // Pre-existing row survived the table rebuild.
+        let kept: String = conn
+            .query_row(
+                "SELECT content FROM chat_artifacts WHERE id='a1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(kept, "keep rusqlite");
+
+        // All three new types are now accepted.
+        for (id, kind) in [
+            ("a2", "rejected"),
+            ("a3", "constraint"),
+            ("a4", "identifier"),
+        ] {
+            conn.execute(
+                "INSERT INTO chat_artifacts(id,chat_id,artifact_type,content,created_at)
+                 VALUES(?1,'c',?2,'x',?3)",
+                rusqlite::params![id, kind, now],
+            )
+            .unwrap_or_else(|e| panic!("type {kind} rejected after migration: {e}"));
+        }
+
+        // Unknown types are still refused.
+        assert!(conn
+            .execute(
+                "INSERT INTO chat_artifacts(id,chat_id,artifact_type,content,created_at)
+                 VALUES('a9','c','nonsense','x',?1)",
+                [&now],
+            )
+            .is_err());
+
+        // Cascade still works after the rename.
+        conn.execute("DELETE FROM chats WHERE id='c'", []).unwrap();
+        let n: i64 = conn
+            .query_row("SELECT count(*) FROM chat_artifacts", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 0, "foreign key cascade lost in rebuild");
+    }
+
+    #[test]
+    fn migrations_are_idempotent() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        run(&mut conn).unwrap();
+        run(&mut conn).unwrap();
+        let versions: i64 = conn
+            .query_row("SELECT count(*) FROM schema_migrations", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(versions, 3);
+    }
 }
