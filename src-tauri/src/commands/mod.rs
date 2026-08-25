@@ -3,6 +3,8 @@ pub mod folders;
 pub mod handoff;
 pub mod news;
 pub mod planner;
+pub mod resume;
+pub mod tabs;
 pub mod roots;
 pub mod search;
 

@@ -147,7 +147,28 @@ export const api = {
     call<planner.ScheduleEvent>("add_event", { title, startTime, endTime }),
 
   getDailyBriefing: () => call<planner.BriefingSection[]>("get_daily_briefing"),
+
+  // Resume ----------------------------------------------------------------------
+  getResumeSuggestions: (limit = 5) =>
+    call<resume.ResumePoint[]>("get_resume_suggestions", { limit }),
+  saveResumePoint: (chatId: string) =>
+    call<resume.ResumePoint>("save_resume_point", { chatId }),
+  dismissResumePoint: (resumeId: string) =>
+    call<void>("dismiss_resume_point", { resumeId }),
 };
+
+export namespace resume {
+  export interface ResumePoint {
+    id: string;
+    chatId: string | null;
+    chatTitle: string | null;
+    intent: string;
+    lastExchange: string | null;
+    openItems: string[];
+    contextRefs: string[];
+    updatedAt: string;
+  }
+}
 
 export namespace planner {
   export interface Todo {

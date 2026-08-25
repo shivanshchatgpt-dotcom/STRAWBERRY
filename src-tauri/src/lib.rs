@@ -2,7 +2,9 @@ mod brief;
 mod commands;
 mod db;
 mod error;
+mod resume;
 mod state;
+mod tabs;
 mod storage;
 
 use std::sync::Arc;
@@ -55,6 +57,12 @@ pub fn run() {
             commands::planner::get_schedule,
             commands::planner::add_event,
             commands::planner::get_daily_briefing,
+            commands::tabs::record_tab_visit,
+            commands::tabs::list_tab_groups,
+            commands::tabs::find_tabs_for_topic,
+            commands::resume::get_resume_suggestions,
+            commands::resume::save_resume_point,
+            commands::resume::dismiss_resume_point,
             commands::get_app_info,
         ])
         .run(tauri::generate_context!())

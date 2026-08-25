@@ -282,6 +282,9 @@ export const useAppStore = create<AppState>((set, get) => {
       try {
         const detail = await api.getChat(chatId);
         const crumbs = await api.getBreadcrumb(detail.meta.nodeId);
+        // Refresh this chat's resume point in the background (fire-and-forget):
+        // next session's banner reflects the latest state of this chat.
+        void api.saveResumePoint(chatId).catch(() => undefined);
         set({
           currentChatId: chatId,
           chatDetail: detail,

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { ResumeBanner } from "./ResumeBanner";
 import { api } from "../../lib/api";
 import type { planner } from "../../lib/api";
 
@@ -90,6 +91,8 @@ export function DashboardView() {
       {error && (
         <div className="dash-error">⚠️ {error}</div>
       )}
+
+      <ResumeBanner />
 
       {/* ------------------------- Briefing cards ------------------------- */}
       <section className="brief-grid" aria-label="Daily briefing">
