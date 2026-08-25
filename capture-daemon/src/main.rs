@@ -4,9 +4,28 @@
 //!
 //! Run: ./target/release/strawberry-daemon
 
+mod db;
+
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 fn main() {
+    // One-shot mode: `--save-once <kind> <text>` → DB insert + JSON, then exit.
+    // Used for scripted verification of the Layer-1 pipeline.
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() >= 4 && args[1] == "--save-once" {
+        let kind = Box::leak(args[2].clone().into_boxed_str());
+        match db::insert_capture(kind, &args[3], std::path::Path::new("/tmp/sb-once.txt")) {
+            Ok(id) => {
+                println!("INSERTED {id}");
+                return;
+            }
+            Err(e) => {
+                eprintln!("FAILED: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     println!("╔═══════════════════════════════════════════╗");
     println!("║  🍓 STRAWBERRY CAPTURE DAEMON — LIVE      ║");
     println!("║  Copy anything → popup → click to save    ║");
@@ -154,7 +173,7 @@ fn show_popup(kind: &'static str, text: String) {
     });
 }
 
-/// Persist capture as JSON under ~/.strawberry/captures/
+/// Persist capture: raw text on disk + full insert into STRAWBERRY SQLite (FTS5).
 fn save_capture(kind: &str, text: &str) -> Result<std::path::PathBuf, String> {
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
     let dir = std::path::PathBuf::from(home)
@@ -190,5 +209,24 @@ fn save_capture(kind: &str, text: &str) -> Result<std::path::PathBuf, String> {
 
     std::fs::write(&path, serde_json::to_string_pretty(&json).unwrap())
         .map_err(|e| e.to_string())?;
+
+    // 🔴 PRIMARY storage: straight into the app's FTS5 database.
+    match db::insert_capture(kind, text, &path) {
+        Ok(chat_id) => println!("🗄️  Indexed in Strawberry DB → {chat_id}"),
+        Err(e) => eprintln!("⚠️ DB index failed (JSON backup saved anyway): {e}"),
+    }
     Ok(path)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn classify_all_types() {
+        assert_eq!(super::classify("[{\"a\":1}]"), "json");
+        assert_eq!(super::classify("https://example.com/docs"), "url");
+        assert_eq!(super::classify("npm install left-pad"), "command");
+        assert_eq!(super::classify("Error: cannot find module"), "error");
+        assert_eq!(super::classify("fn main() { println!(\"hi\"); }"), "code");
+        assert_eq!(super::classify("remember to buy strawberries"), "note");
+    }
 }
