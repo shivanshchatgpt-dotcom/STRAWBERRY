@@ -43,6 +43,16 @@ pub fn run() {
             commands::chats::update_chat_metadata,
             commands::chats::regenerate_brief,
             commands::search::search_chats,
+            commands::planner::get_todos,
+            commands::planner::add_todo,
+            commands::planner::toggle_todo,
+            commands::planner::delete_todo,
+            commands::planner::get_habits,
+            commands::planner::add_habit,
+            commands::planner::toggle_habit_today,
+            commands::planner::get_schedule,
+            commands::planner::add_event,
+            commands::planner::get_daily_briefing,
             commands::get_app_info,
         ])
         .run(tauri::generate_context!())

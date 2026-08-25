@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Chat Memory Tree",
+  "productName": "Strawberry",
   "version": "0.1.0",
   "identifier": "com.local.chatmemorytree",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Chat Memory Tree",
+        "title": "🍓 Strawberry — Second Brain",
         "width": 1280,
         "height": 800,
         "minWidth": 1024,

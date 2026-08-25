@@ -1,5 +1,7 @@
 pub mod chats;
 pub mod folders;
+pub mod news;
+pub mod planner;
 pub mod roots;
 pub mod search;
 

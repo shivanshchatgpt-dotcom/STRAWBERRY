@@ -1,6 +1,7 @@
 use rusqlite::Connection;
 
 const MIGRATION_V1: &str = include_str!("../../migrations/001_init.sql");
+const MIGRATION_V2: &str = include_str!("../../migrations/002_planner.sql");
 
 /// Apply pending schema migrations, tracked in `schema_migrations`.
 pub fn run(conn: &mut Connection) -> Result<(), String> {
@@ -34,7 +35,21 @@ pub fn run(conn: &mut Connection) -> Result<(), String> {
             "INSERT INTO schema_migrations(version, applied_at) VALUES (1, ?1)",
             [crate::db::now_iso()],
         )
-        .map_err(crate::error::to_string_err("migration 001 failed to record"))?;
+        .map_err(crate::error::to_string_err(
+            "migration 001 failed to record",
+        ))?;
+    }
+
+    if !applied.contains(&2) {
+        tx.execute_batch(MIGRATION_V2)
+            .map_err(crate::error::to_string_err("migration 002 failed"))?;
+        tx.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (2, ?1)",
+            [crate::db::now_iso()],
+        )
+        .map_err(crate::error::to_string_err(
+            "migration 002 failed to record",
+        ))?;
     }
 
     tx.commit()

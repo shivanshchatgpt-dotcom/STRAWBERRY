@@ -115,4 +115,58 @@ export const api = {
 
   // Utilities -----------------------------------------------------------------
   getAppInfo: () => call<AppInfo>("get_app_info"),
+
+  // Planner -------------------------------------------------------------------
+  getTodos: () => call<planner.Todo[]>("get_todos"),
+  addTodo: (title: string, priority: string, dueDate: string | null) =>
+    call<planner.Todo>("add_todo", { title, priority, dueDate }),
+  toggleTodo: (todoId: number) => call<boolean>("toggle_todo", { todoId }),
+  deleteTodo: (todoId: number) => call<void>("delete_todo", { todoId }),
+
+  getHabits: () => call<planner.Habit[]>("get_habits"),
+  addHabit: (name: string, icon: string | null, targetDays: number | null) =>
+    call<planner.Habit>("add_habit", { name, icon, targetDays }),
+  toggleHabitToday: (habitId: number) =>
+    call<boolean>("toggle_habit_today", { habitId }),
+
+  getSchedule: () => call<planner.ScheduleEvent[]>("get_schedule"),
+  addEvent: (title: string, startTime: string, endTime: string | null) =>
+    call<planner.ScheduleEvent>("add_event", { title, startTime, endTime }),
+
+  getDailyBriefing: () => call<planner.BriefingSection[]>("get_daily_briefing"),
 };
+
+export namespace planner {
+  export interface Todo {
+    id: number;
+    title: string;
+    description: string | null;
+    priority: "low" | "medium" | "high";
+    completed: boolean;
+    dueDate: string | null;
+  }
+  export interface Habit {
+    id: number;
+    name: string;
+    description: string | null;
+    color: string | null;
+    icon: string | null;
+    targetDays: number;
+    completedDates: string[];
+  }
+  export interface ScheduleEvent {
+    id: number;
+    title: string;
+    description: string | null;
+    startTime: string;
+    endTime: string | null;
+    color: string | null;
+    recurring: string;
+    completed: boolean;
+  }
+  export interface BriefingSection {
+    key: string;
+    title: string;
+    lines: string[];
+  }
+}
