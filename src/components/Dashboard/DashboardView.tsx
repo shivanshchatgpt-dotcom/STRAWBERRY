@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ResumeBanner } from "./ResumeBanner";
 import { api } from "../../lib/api";
 import type { planner } from "../../lib/api";
+import { useAppStore } from "../../store/appStore";
 
 type Section = planner.BriefingSection;
 
@@ -36,6 +37,26 @@ export function DashboardView() {
       setBriefing([]);
     }
   }, []);
+
+  const [story, setStory] = useState<string | null>(null);
+  const [storyBusy, setStoryBusy] = useState(false);
+  const [repoPath, setRepoPath] = useState("");
+
+  const generateStory = async () => {
+    setStoryBusy(true);
+    try {
+      const md = await api.exportMyStory(repoPath.trim() || null, 14);
+      setStory(md);
+    } catch {
+      setStory("Story generation failed.");
+    } finally {
+      setStoryBusy(false);
+    }
+  };
+
+  const copyStory = async () => {
+    if (story) await useAppStore.getState().copyText(story, "My Story");
+  };
 
   useEffect(() => {
     void refresh();
@@ -227,6 +248,36 @@ export function DashboardView() {
           })}
           {habits.length === 0 && <div className="text-dim">No habits yet.</div>}
         </div>
+      </section>
+
+      {/* ---------------------------- Export My Story --------------------- */}
+      <section className="panel" aria-label="Export My Story">
+        <h3 className="panel-title">📖 Export My Story</h3>
+        <p className="text-dim" style={{ fontSize: 12.5, margin: "4px 0 10px" }}>
+          Buildathon-ready narrative — chats, captures, tasks, habits (+ optional
+          git commit timeline). 100% local, zero LLM.
+        </p>
+        <div className="quick-row">
+          <input
+            className="quick-input"
+            placeholder="Optional: path to a git repo for commit timeline…"
+            value={repoPath}
+            onChange={(e) => setRepoPath(e.target.value)}
+          />
+          <button
+            className="btn primary"
+            disabled={storyBusy}
+            onClick={() => void generateStory()}
+          >
+            {storyBusy ? <span className="spinner" /> : null} Generate
+          </button>
+          {story && (
+            <button className="btn" onClick={() => void copyStory()}>
+              📋 Copy
+            </button>
+          )}
+        </div>
+        {story && <pre className="pre-block brief-text story-output">{story}</pre>}
       </section>
     </div>
   );

@@ -8,6 +8,7 @@ pub mod resume;
 pub mod roots;
 pub mod screen;
 pub mod search;
+pub mod story;
 pub mod tabs;
 
 use std::sync::Arc;

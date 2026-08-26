@@ -1666,3 +1666,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   white-space: nowrap;
   flex-shrink: 0;
 }
+
+.story-output {
+  max-height: 340px;
+  margin-top: 10px;
+}

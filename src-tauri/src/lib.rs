@@ -65,6 +65,7 @@ pub fn run() {
             commands::resume::save_resume_point,
             commands::resume::dismiss_resume_point,
             commands::resume::get_day_summary,
+            commands::story::export_my_story,
             commands::inbox::get_inbox_items,
             commands::inbox::get_inbox_counts,
             commands::inbox::delete_inbox_item,

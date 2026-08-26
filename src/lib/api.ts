@@ -171,6 +171,10 @@ export const api = {
   getInboxCounts: () => call<inbox.InboxCounts>("get_inbox_counts"),
   deleteInboxItem: (chatId: string) => call<void>("delete_inbox_item", { chatId }),
 
+  // Story ---------------------------------------------------------------------
+  exportMyStory: (repoPath: string | null, days?: number) =>
+    call<string>("export_my_story", { repoPath, days }),
+
   // Utilities -----------------------------------------------------------------
   getAppInfo: () => call<AppInfo>("get_app_info"),
 
