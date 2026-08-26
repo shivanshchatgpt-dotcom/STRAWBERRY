@@ -23,6 +23,8 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 regex = "1"
+image = "0.25"
+xcap = { version = "0.9", default-features = false, features = ["image"] }
 
 [profile.release]
 strip = true

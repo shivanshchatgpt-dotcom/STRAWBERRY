@@ -6,6 +6,10 @@ import type {
   HandoffExport,
   NodeSummary,
   Root,
+  ScreenConfig,
+  ScreenFrame,
+  ScreenSearchHit,
+  ScreenBlocklistItem,
   SearchScopeKind,
   SearchResult,
   TreeNode,
@@ -125,6 +129,41 @@ export const api = {
       scopeKind,
       scopeId,
     }),
+
+  // Screen Memory -----------------------------------------------------------------
+  startScreenCapture: (config?: ScreenConfig | null) =>
+    call<void>("start_screen_capture", { config }),
+
+  stopScreenCapture: () => call<void>("stop_screen_capture"),
+
+  getScreenConfig: () => call<ScreenConfig>("get_screen_config"),
+
+  updateScreenConfig: (config: ScreenConfig) =>
+    call<void>("update_screen_config", { config }),
+
+  listScreens: (
+    limit?: number,
+    offset?: number,
+    appFilter?: string | null,
+    fromTs?: number | null,
+    toTs?: number | null,
+  ) =>
+    call<ScreenFrame[]>("list_screens", { limit, offset, appFilter, fromTs, toTs }),
+
+  searchScreens: (query: string, limit?: number) =>
+    call<ScreenSearchHit[]>("search_screens", { query, limit }),
+
+  getScreenFrame: (id: number) =>
+    call<ScreenFrame | null>("get_screen_frame", { id }),
+
+  deleteScreenFrame: (id: number) => call<void>("delete_screen_frame", { id }),
+
+  addScreenBlocklist: (pattern: string, reason?: string | null) =>
+    call<number>("add_screen_blocklist", { pattern, reason }),
+
+  removeScreenBlocklist: (id: number) => call<void>("remove_screen_blocklist", { id }),
+
+  listScreenBlocklist: () => call<ScreenBlocklistItem[]>("list_screen_blocklist"),
 
   // Utilities -----------------------------------------------------------------
   getAppInfo: () => call<AppInfo>("get_app_info"),

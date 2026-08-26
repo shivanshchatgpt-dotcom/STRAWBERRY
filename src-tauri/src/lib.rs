@@ -3,6 +3,7 @@ mod commands;
 mod db;
 mod error;
 mod resume;
+mod screen;
 mod state;
 mod tabs;
 mod storage;
@@ -64,6 +65,17 @@ pub fn run() {
             commands::resume::save_resume_point,
             commands::resume::dismiss_resume_point,
             commands::resume::get_day_summary,
+            commands::screen::start_screen_capture,
+            commands::screen::stop_screen_capture,
+            commands::screen::get_screen_config,
+            commands::screen::update_screen_config,
+            commands::screen::list_screens,
+            commands::screen::search_screens,
+            commands::screen::get_screen_frame,
+            commands::screen::delete_screen_frame,
+            commands::screen::add_screen_blocklist,
+            commands::screen::remove_screen_blocklist,
+            commands::screen::list_screen_blocklist,
             commands::get_app_info,
         ])
         .run(tauri::generate_context!())

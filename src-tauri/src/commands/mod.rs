@@ -4,9 +4,10 @@ pub mod handoff;
 pub mod news;
 pub mod planner;
 pub mod resume;
-pub mod tabs;
 pub mod roots;
+pub mod screen;
 pub mod search;
+pub mod tabs;
 
 use std::sync::Arc;
 
@@ -14,6 +15,11 @@ use crate::db::models::AppInfo;
 use crate::state::AppState;
 
 pub type Cmd<T> = Result<T, String>;
+
+/// Helper to get database connection from AppState
+pub fn conn_of(app: &AppState) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection>, String> {
+    app.conn.lock().map_err(|_| crate::error::ERR_DB_LOCK.to_string())
+}
 
 /// Run a blocking closure against app state inside Tauri's blocking thread pool.
 pub(crate) async fn blocking<T, F>(st: Arc<AppState>, f: F) -> Cmd<T>

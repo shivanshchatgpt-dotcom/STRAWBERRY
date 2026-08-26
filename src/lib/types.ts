@@ -195,3 +195,57 @@ export const SLOT_LABELS: Record<HandoffSlot, string> = {
   open_questions: "Open",
   constraints: "Rules",
 };
+
+// ---------------------------------------------------------------------------
+// Screen Memory / Screenshot Recall
+// ---------------------------------------------------------------------------
+
+export interface ScreenConfig {
+  intervalSecs: number;
+  minChangeThreshold: number;
+  enableOcr: boolean;
+  enableEmbeddings: boolean;
+  blocklist: string[];
+  maxWidth: number;
+  maxHeight: number;
+  jpegQuality: number;
+}
+
+export interface ScreenFrame {
+  id: number;
+  ts: number;
+  appName: string | null;
+  windowTitle: string | null;
+  filePath: string;
+  width: number;
+  height: number;
+  byteSize: number;
+  perceptualHash: string;
+  ocrText: string | null;
+  isBlurred: boolean;
+  thumbnailPath: string | null;
+  createdAt: string;
+}
+
+export interface ScreenSearchHit {
+  id: number;
+  ts: number;
+  appName: string | null;
+  windowTitle: string | null;
+  filePath: string;
+  perceptualHash: string;
+  snippet: string;
+  score: number;
+}
+
+export interface ScreenBlocklistItem {
+  id: number;
+  pattern: string;
+  addedAt: string;
+  reason: string | null;
+}
+
+export interface ScreenBlocklist {
+  pattern: string;
+  reason?: string;
+}

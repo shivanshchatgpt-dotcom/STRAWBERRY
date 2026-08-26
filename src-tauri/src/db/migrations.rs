@@ -4,6 +4,7 @@ const MIGRATION_V1: &str = include_str!("../../migrations/001_init.sql");
 const MIGRATION_V2: &str = include_str!("../../migrations/002_planner.sql");
 const MIGRATION_V3: &str = include_str!("../../migrations/003_handoff.sql");
 const MIGRATION_V4: &str = include_str!("../../migrations/004_resume_tabs.sql");
+const MIGRATION_V5: &str = include_str!("../../migrations/005_screen_memory.sql");
 
 /// Apply pending schema migrations, tracked in `schema_migrations`.
 pub fn run(conn: &mut Connection) -> Result<(), String> {
@@ -75,6 +76,18 @@ pub fn run(conn: &mut Connection) -> Result<(), String> {
         )
         .map_err(crate::error::to_string_err(
             "migration 004 failed to record",
+        ))?;
+    }
+
+    if !applied.contains(&5) {
+        tx.execute_batch(MIGRATION_V5)
+            .map_err(crate::error::to_string_err("migration 005 failed"))?;
+        tx.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (5, ?1)",
+            [crate::db::now_iso()],
+        )
+        .map_err(crate::error::to_string_err(
+            "migration 005 failed to record",
         ))?;
     }
 
@@ -277,6 +290,6 @@ mod tests {
         let versions: i64 = conn
             .query_row("SELECT count(*) FROM schema_migrations", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(versions, 4);
+        assert_eq!(versions, 5);
     }
 }
