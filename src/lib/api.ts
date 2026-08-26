@@ -209,6 +209,13 @@ export const api = {
     call<void>("dismiss_resume_point", { resumeId }),
   getDaySummary: () => call<resume.DaySummary>("get_day_summary"),
 
+  // Planner round 2 (focus + backfill) -------------------------------------------
+  logFocusSession: (minutes: number, label?: string | null, kind?: "timer" | "stopwatch") =>
+    call<planner.FocusSession>("log_focus_session", { minutes, label: label ?? null, kind: kind ?? null }),
+  getFocusStats: () => call<planner.FocusStats>("get_focus_stats"),
+  toggleHabitDate: (habitId: number, date: string) =>
+    call<boolean>("toggle_habit_date", { habitId, date }),
+
   // Context Recall (work snapshots) ---------------------------------------------
   captureWorkSnapshot: () => call<snap.WorkSnapshot>("capture_work_snapshot"),
   getLatestWorkSnapshot: () =>
@@ -300,6 +307,20 @@ export namespace planner {
     key: string;
     title: string;
     lines: string[];
+  }
+  export interface FocusSession {
+    id: number;
+    minutes: number;
+    label: string | null;
+    kind: "timer" | "stopwatch";
+    completedAt: string;
+  }
+  export interface FocusStats {
+    sessions: number;
+    totalMinutes: number;
+    todayMinutes: number;
+    todaySessions: number;
+    recent: FocusSession[];
   }
 }
 

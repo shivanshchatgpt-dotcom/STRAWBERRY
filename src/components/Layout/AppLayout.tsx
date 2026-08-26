@@ -5,9 +5,10 @@ import { SearchBox } from "../Search/SearchBox";
 import { DashboardView } from "../Dashboard/DashboardView";
 import { ScreensView } from "../Screens/ScreensView";
 import { InboxView } from "../Inbox/InboxView";
+import { PlannerView } from "../Planner/PlannerView";
 import strawberryIcon from "../../assets/strawberry-icon.png";
 
-type View = "dashboard" | "tree" | "screens" | "inbox";
+type View = "dashboard" | "tree" | "screens" | "inbox" | "planner";
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const openDialog = useAppStore((s) => s.openDialog);
@@ -37,6 +38,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
     clearSearch();
     setView("inbox");
   };
+  const goPlanner = () => {
+    clearSearch();
+    setView("planner");
+  };
 
   // Keyboard: Ctrl/Cmd+1 dashboard, Ctrl/Cmd+2 tree, Ctrl/Cmd+3 screens.
   useEffect(() => {
@@ -53,6 +58,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
       } else if ((e.ctrlKey || e.metaKey) && e.key === "4") {
         e.preventDefault();
         goInbox();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "5") {
+        e.preventDefault();
+        goPlanner();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -102,6 +110,13 @@ export function AppLayout({ children }: { children: ReactNode }) {
           >
             📥 Inbox
           </button>
+          <button
+            className={`nav-tab${view === "planner" ? " active" : ""}`}
+            onClick={goPlanner}
+            title="Ctrl/Cmd+5"
+          >
+            🗓️ Planner
+          </button>
         </nav>
 
         <SearchBox />
@@ -137,6 +152,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
           <ScreensView />
         ) : view === "inbox" ? (
           <InboxView />
+        ) : view === "planner" ? (
+          <PlannerView />
         ) : showDashboard ? (
           <DashboardView />
         ) : (

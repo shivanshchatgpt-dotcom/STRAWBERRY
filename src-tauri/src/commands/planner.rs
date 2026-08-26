@@ -459,3 +459,153 @@ fn compute_streak(dates_desc: &[String], today: &str) -> usize {
     }
     streak
 }
+
+// ───────────────────────── Focus sessions (timer + stopwatch) ─────────────
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FocusStats {
+    pub sessions: i64,
+    pub total_minutes: i64,
+    pub today_minutes: i64,
+    pub today_sessions: i64,
+    pub recent: Vec<FocusSession>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FocusSession {
+    pub id: i64,
+    pub minutes: i64,
+    pub label: Option<String>,
+    pub kind: String,
+    pub completed_at: String,
+}
+
+/// Log a completed focus/timer/stopwatch session (1..=600 minutes).
+#[tauri::command]
+pub async fn log_focus_session(
+    state: State<'_, Arc<AppState>>,
+    minutes: i64,
+    label: Option<String>,
+    kind: Option<String>,
+) -> Cmd<FocusSession> {
+    let st = state.inner().clone();
+    super::blocking(st, move |app| {
+        if !(1..=600).contains(&minutes) {
+            return Err("minutes must be 1-600".into());
+        }
+        let conn = conn_of(app)?;
+        let kind = match kind.as_deref() {
+            Some("stopwatch") => "stopwatch",
+            _ => "timer",
+        };
+        conn.execute(
+            "INSERT INTO focus_sessions(minutes, label, kind) VALUES(?1,?2,?3)",
+            rusqlite::params![minutes, label.as_deref().unwrap_or("").trim(), kind],
+        )
+        .map_err(crate::error::to_string_err("focus insert"))?;
+        Ok(FocusSession {
+            id: conn.last_insert_rowid(),
+            minutes,
+            label,
+            kind: kind.into(),
+            completed_at: crate::db::now_iso(),
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn get_focus_stats(state: State<'_, Arc<AppState>>) -> Cmd<FocusStats> {
+    let st = state.inner().clone();
+    super::blocking(st, move |app| {
+        let conn = conn_of(app)?;
+        let today = crate::db::now_iso()[..10].to_string();
+        let (sessions, total_minutes, today_minutes, today_sessions) = conn
+            .query_row(
+                "SELECT COUNT(*),
+                        COALESCE(SUM(minutes),0),
+                        COALESCE(SUM(CASE WHEN substr(completed_at,1,10)=?1 THEN minutes ELSE 0 END),0),
+                        COALESCE(SUM(CASE WHEN substr(completed_at,1,10)=?1 THEN 1 ELSE 0 END),0)
+                 FROM focus_sessions",
+                [&today],
+                |r| {
+                    Ok((
+                        r.get::<_, i64>(0)?,
+                        r.get::<_, i64>(1)?,
+                        r.get::<_, i64>(2)?,
+                        r.get::<_, i64>(3)?,
+                    ))
+                },
+            )
+            .map_err(crate::error::to_string_err("focus stats"))?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, minutes, label, kind, completed_at
+                 FROM focus_sessions ORDER BY completed_at DESC LIMIT 8",
+            )
+            .map_err(crate::error::to_string_err("focus recent"))?;
+        let recent = stmt
+            .query_map([], |r| {
+                Ok(FocusSession {
+                    id: r.get(0)?,
+                    minutes: r.get(1)?,
+                    label: r.get(2)?,
+                    kind: r.get(3)?,
+                    completed_at: r.get(4)?,
+                })
+            })
+            .map_err(crate::error::to_string_err("focus recent map"))?
+            .filter_map(|r| r.ok())
+            .collect();
+        Ok(FocusStats {
+            sessions,
+            total_minutes,
+            today_minutes,
+            today_sessions,
+            recent,
+        })
+    })
+    .await
+}
+
+/// Tick a habit on ANY date (YYYY-MM-DD) — week-strip backfill.
+#[tauri::command]
+pub async fn toggle_habit_date(
+    state: State<'_, Arc<AppState>>,
+    habit_id: i64,
+    date: String,
+) -> Cmd<bool> {
+    let st = state.inner().clone();
+    super::blocking(st, move |app| {
+        let b = date.as_bytes();
+        if date.len() != 10 || b[4] != b'-' || b[7] != b'-' {
+            return Err("date must be YYYY-MM-DD".into());
+        }
+        let conn = conn_of(app)?;
+        let exists: Option<i64> = conn
+            .query_row(
+                "SELECT id FROM habit_logs WHERE habit_id=?1 AND completed_date=?2",
+                rusqlite::params![habit_id, date],
+                |r| r.get(0),
+            )
+            .ok();
+        if exists.is_some() {
+            conn.execute(
+                "DELETE FROM habit_logs WHERE habit_id=?1 AND completed_date=?2",
+                rusqlite::params![habit_id, date],
+            )
+            .map_err(crate::error::to_string_err("untick habit date"))?;
+            Ok(false)
+        } else {
+            conn.execute(
+                "INSERT INTO habit_logs(habit_id, completed_date) VALUES(?1,?2)",
+                rusqlite::params![habit_id, date],
+            )
+            .map_err(crate::error::to_string_err("tick habit date"))?;
+            Ok(true)
+        }
+    })
+    .await
+}
