@@ -4,6 +4,7 @@ mod db;
 mod error;
 mod resume;
 mod screen;
+mod snapshot;
 mod state;
 mod tabs;
 mod storage;
@@ -82,6 +83,9 @@ pub fn run() {
             commands::screen::add_screen_blocklist,
             commands::screen::remove_screen_blocklist,
             commands::screen::list_screen_blocklist,
+            commands::snapshot::capture_work_snapshot,
+            commands::snapshot::get_latest_work_snapshot,
+            commands::snapshot::list_work_snapshots,
             commands::get_app_info,
         ])
         .run(tauri::generate_context!())

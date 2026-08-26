@@ -672,6 +672,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "image",
+ "lz4_flex",
  "regex",
  "rusqlite",
  "serde",
@@ -2697,6 +2698,12 @@ checksum = "0fae87c125b03c1d2c0150c90365d7d6bcc53fb73a9acaef207d2d065860f062"
 dependencies = [
  "imgref",
 ]
+
+[[package]]
+name = "lz4_flex"
+version = "0.11.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "373f5eceeeab7925e0c1098212f2fbc4d416adec9d35051a6ab251e824c1854a"
 
 [[package]]
 name = "markup5ever"

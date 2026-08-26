@@ -9,6 +9,7 @@ pub mod resume;
 pub mod roots;
 pub mod screen;
 pub mod search;
+pub mod snapshot;
 pub mod story;
 pub mod tabs;
 

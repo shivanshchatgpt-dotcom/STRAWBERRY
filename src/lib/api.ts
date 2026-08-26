@@ -208,6 +208,13 @@ export const api = {
   dismissResumePoint: (resumeId: string) =>
     call<void>("dismiss_resume_point", { resumeId }),
   getDaySummary: () => call<resume.DaySummary>("get_day_summary"),
+
+  // Context Recall (work snapshots) ---------------------------------------------
+  captureWorkSnapshot: () => call<snap.WorkSnapshot>("capture_work_snapshot"),
+  getLatestWorkSnapshot: () =>
+    call<snap.WorkSnapshot | null>("get_latest_work_snapshot"),
+  listWorkSnapshots: (limit = 10) =>
+    call<[string, string, string | null][]>("list_work_snapshots", { limit }),
 };
 
 export namespace health {
@@ -293,5 +300,35 @@ export namespace planner {
     key: string;
     title: string;
     lines: string[];
+  }
+}
+
+export namespace snap {
+  export interface WindowInfo {
+    app: string;
+    title: string;
+    active: boolean;
+  }
+  export interface TabInfo {
+    title: string;
+    url: string;
+  }
+  export interface BrowserContext {
+    browser: string;
+    kind: "tabs" | "history";
+    items: TabInfo[];
+  }
+  export interface RelatedNote {
+    chatId: string;
+    title: string;
+  }
+  export interface WorkSnapshot {
+    id: string;
+    createdAt: string;
+    windows: WindowInfo[];
+    browsers: BrowserContext[];
+    clipboardHint: string | null;
+    relatedNotes: RelatedNote[];
+    story: string;
   }
 }
