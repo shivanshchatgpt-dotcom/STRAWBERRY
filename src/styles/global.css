@@ -7,17 +7,17 @@
 /* ─────────────────────────── 1. TOKENS ─────────────────────────── */
 
 :root {
-  /* surfaces */
-  --bg: #0b0e14;
-  --bg-raised: #10141d;
-  --bg-panel: #151b28;
-  --bg-hover: #1b2334;
-  --bg-active: #222c42;
-  --bg-inset: #0e1219;
+  /* surfaces — translucent glass over the ambient gradient */
+  --bg: #07090f;
+  --bg-raised: rgba(255, 255, 255, 0.045);
+  --bg-panel: rgba(255, 255, 255, 0.062);
+  --bg-hover: rgba(255, 255, 255, 0.095);
+  --bg-active: rgba(255, 255, 255, 0.13);
+  --bg-inset: rgba(255, 255, 255, 0.035);
 
-  /* hairlines */
-  --border: rgba(255, 255, 255, 0.07);
-  --border-strong: rgba(255, 255, 255, 0.14);
+  /* hairlines — light-catching glass edges */
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.17);
 
   /* text */
   --text: #e9ecf4;
@@ -39,17 +39,21 @@
   --grad-mint: linear-gradient(135deg, #34d399, #0ea371);
 
   /* elevation */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.25);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35), 0 12px 32px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 12px 24px rgba(0, 0, 0, 0.45), 0 24px 64px rgba(0, 0, 0, 0.4);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), 0 4px 14px rgba(0, 0, 0, 0.22);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.32), 0 16px 44px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 16px 36px rgba(0, 0, 0, 0.42), 0 32px 80px rgba(0, 0, 0, 0.42);
   --glow-berry: 0 0 0 1px rgba(251, 113, 133, 0.35), 0 4px 18px rgba(244, 63, 94, 0.28);
   --glow-accent: 0 0 0 1px rgba(52, 211, 153, 0.3), 0 4px 16px rgba(14, 163, 113, 0.22);
 
   /* geometry */
-  --radius: 14px;
-  --radius-sm: 9px;
-  --radius-xs: 6px;
-  --topbar-h: 56px;
+  --radius: 18px;
+  --radius-sm: 12px;
+  --radius-xs: 7px;
+  --topbar-h: 58px;
+
+  /* liquid glass */
+  --glass-blur: blur(26px) saturate(1.65);
+  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.09), inset 0 -1px 0 rgba(255, 255, 255, 0.02);
 
   /* type */
   --font: "Inter", "SF Pro Text", "Segoe UI Variable", "Segoe UI", system-ui,
@@ -66,12 +70,12 @@
 }
 
 [data-theme="light"] {
-  --bg: #f2f4f9;
-  --bg-raised: #f8f9fd;
-  --bg-panel: #ffffff;
-  --bg-hover: #eef1f8;
-  --bg-active: #e4e9f4;
-  --bg-inset: #eceff6;
+  --bg: #eef1f8;
+  --bg-raised: rgba(255, 255, 255, 0.55);
+  --bg-panel: rgba(255, 255, 255, 0.62);
+  --bg-hover: rgba(255, 255, 255, 0.85);
+  --bg-active: rgba(255, 255, 255, 0.95);
+  --bg-inset: rgba(15, 23, 42, 0.05);
 
   --border: rgba(15, 23, 42, 0.08);
   --border-strong: rgba(15, 23, 42, 0.16);
@@ -113,6 +117,29 @@ html {
 body {
   background: var(--bg);
   color: var(--text);
+}
+
+/* ambient colour field — what the glass refracts */
+body::before {
+  content: "";
+  position: fixed;
+  inset: -10%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(50rem 38rem at 8% -8%, rgba(244, 63, 94, 0.32), transparent 64%),
+    radial-gradient(44rem 32rem at 94% 4%, rgba(167, 139, 250, 0.24), transparent 62%),
+    radial-gradient(48rem 38rem at 50% 116%, rgba(52, 211, 153, 0.17), transparent 64%);
+  filter: saturate(1.15);
+}
+[data-theme="light"] body::before {
+  background:
+    radial-gradient(46rem 34rem at 10% -6%, rgba(244, 63, 94, 0.14), transparent 62%),
+    radial-gradient(40rem 30rem at 92% 8%, rgba(139, 122, 250, 0.12), transparent 60%),
+    radial-gradient(44rem 34rem at 50% 112%, rgba(16, 185, 129, 0.10), transparent 62%);
+}
+
+body {
   font-family: var(--font);
   font-size: 13.5px;
   line-height: 1.5;
@@ -160,6 +187,8 @@ select {
   font: inherit;
   color: var(--text);
   background: var(--bg-inset);
+  backdrop-filter: blur(14px) saturate(1.4);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   padding: 8px 12px;
@@ -227,6 +256,9 @@ h1, h2, h3, h4 {
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-strong);
   background: var(--bg-panel);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-edge), var(--shadow-sm);
   color: var(--text);
   font-weight: 560;
   font-size: 13px;
@@ -260,9 +292,9 @@ h1, h2, h3, h4 {
   box-shadow: 0 2px 10px rgba(244, 63, 94, 0.35);
 }
 .btn.primary:hover:not(:disabled) {
-  box-shadow: var(--glow-berry);
+  box-shadow: var(--glow-berry), var(--glass-edge);
   transform: translateY(-1px);
-  filter: brightness(1.06);
+  filter: brightness(1.07);
 }
 
 .btn.danger {
@@ -356,10 +388,11 @@ h1, h2, h3, h4 {
   height: var(--topbar-h);
   padding: 0 14px;
   flex-shrink: 0;
-  background: color-mix(in srgb, var(--bg-raised) 82%, transparent);
-  backdrop-filter: blur(14px) saturate(1.3);
-  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  background: color-mix(in srgb, var(--bg-raised) 55%, transparent);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   border-bottom: 1px solid var(--border);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
   z-index: 10;
 }
 
@@ -403,9 +436,12 @@ h1, h2, h3, h4 {
   display: flex;
   gap: 3px;
   background: var(--bg-inset);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid var(--border);
-  border-radius: 11px;
+  border-radius: 13px;
   padding: 3px;
+  box-shadow: var(--glass-edge);
 }
 .nav-tab {
   padding: 6px 14px;
@@ -424,9 +460,9 @@ h1, h2, h3, h4 {
 }
 .nav-tab.active {
   color: var(--text);
-  background: var(--bg-panel);
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--border);
+  background: var(--bg-hover);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--border-strong);
   padding: 5px 13px; /* compensate border */
 }
 
@@ -2124,4 +2160,104 @@ pre.original-text {
 }
 .recall-close {
   margin-top: 12px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   6. LIQUID GLASS OVERHAUL (v3) — frosted surfaces everywhere.
+   Cascade-last so it wins over v2 solid backgrounds.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.panel,
+.chart-card,
+.root-card,
+.stat-box,
+.inbox-item,
+.artifact-item,
+.resume-banner,
+.recall,
+.dialog,
+.toast,
+.handoff-output,
+.story-output,
+.pre-block,
+.sidebar,
+.tabbar,
+.meta-table td,
+.quick-select {
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-edge), var(--shadow-sm);
+}
+
+.panel {
+  border-radius: var(--radius);
+  transition: transform var(--t-med), box-shadow var(--t-med), border-color var(--t-fast);
+}
+.panel:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--glass-edge), var(--shadow-md);
+}
+
+/* floating glass cards on the dashboard grid */
+.brief-grid > * {
+  animation: popIn 0.45s var(--ease-spring) both;
+}
+.brief-grid > *:hover {
+  transform: translateY(-2px);
+}
+
+/* dialogs float above everything with deep glass */
+.dialog {
+  background: color-mix(in srgb, var(--bg-raised) 72%, transparent);
+  border-radius: 22px;
+  box-shadow: var(--glass-edge), var(--shadow-lg);
+}
+.dialog-backdrop {
+  backdrop-filter: blur(8px) saturate(1.2) brightness(0.7);
+  -webkit-backdrop-filter: blur(8px) saturate(1.2) brightness(0.7);
+}
+
+/* toasts = little glass slabs */
+.toast {
+  border-radius: 14px;
+  box-shadow: var(--glass-edge), var(--shadow-md);
+}
+
+/* code/pre blocks keep contrast but get glass rim */
+.pre-block {
+  border-radius: var(--radius-sm);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), var(--shadow-sm);
+}
+
+/* tree sidebar panel */
+.sidebar {
+  background: var(--bg-inset);
+  border-radius: var(--radius);
+}
+
+/* reader + outputs feel like one glass sheet */
+.reader-head,
+.tabbar {
+  background: transparent;
+}
+
+/* scrollbars melt into the glass */
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 99px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.24);
+  background-clip: padding-box;
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.18);
+  background-clip: padding-box;
+}
+
+/* selection glows berry through the frost */
+::selection {
+  background: rgba(251, 113, 133, 0.35);
 }

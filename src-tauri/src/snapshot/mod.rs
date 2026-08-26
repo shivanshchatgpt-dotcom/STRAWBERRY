@@ -362,7 +362,7 @@ pub fn generate_story(
 
     let where_part = match active {
         Some(a) => format!(
-            "{time} tum **{}** me the — \"{}\"",
+            "{time} tum {} me the — \"{}\"",
             a.app,
             a.title.chars().take(90).collect::<String>()
         ),
