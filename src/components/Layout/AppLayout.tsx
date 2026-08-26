@@ -112,8 +112,21 @@ export function AppLayout({ children }: { children: ReactNode }) {
             + New Index
           </button>
         )}
+        <button
+          className="theme-toggle"
+          title="Toggle theme (dark / light)"
+          aria-label="Toggle theme"
+          onClick={() => {
+            const next =
+              document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+            document.documentElement.dataset.theme = next;
+            localStorage.setItem("strawberry-theme", next);
+          }}
+        >
+          {document.documentElement.dataset.theme === "dark" ? "☀️" : "🌙"}
+        </button>
         <span className="offline-chip" title="All data stays on this machine">
-          ● Offline · Local
+          Offline · Local
         </span>
       </header>
       <div className="main-area">
