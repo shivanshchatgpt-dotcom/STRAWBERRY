@@ -5,6 +5,7 @@ import { SearchBox } from "../Search/SearchBox";
 import { DashboardView } from "../Dashboard/DashboardView";
 import { ScreensView } from "../Screens/ScreensView";
 import { InboxView } from "../Inbox/InboxView";
+import strawberryIcon from "../../assets/strawberry-icon.png";
 
 type View = "dashboard" | "tree" | "screens" | "inbox";
 
@@ -68,35 +69,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           aria-label="Strawberry dashboard"
         >
           <span className="logo">
-            <svg className="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
-              <defs>
-                <linearGradient id="brandBerryBody" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0" stopColor="#ffffff" />
-                  <stop offset="1" stopColor="#ffe4e6" />
-                </linearGradient>
-              </defs>
-              <path
-                d="M12 7.4C11 5.9 9.2 5 7.1 5.2c.9.7 1.5 1.5 1.8 2.3-1.1-.3-2.3-.1-3.3.5 1.2.4 2.1 1 2.8 1.8"
-                fill="none" stroke="#6ee7b7" strokeWidth="1.6"
-                strokeLinecap="round" strokeLinejoin="round"
-              />
-              <path
-                d="M12 7.4c1-1.5 2.8-2.4 4.9-2.2-.9.7-1.5 1.5-1.8 2.3 1.1-.3 2.3-.1 3.3.5-1.2.4-2.1 1-2.8 1.8"
-                fill="none" stroke="#34d399" strokeWidth="1.6"
-                strokeLinecap="round" strokeLinejoin="round"
-              />
-              <path
-                d="M12 21.8c-4.4-2.6-6.8-5.8-6.8-9 0-2.9 3-4.5 6.8-4.5s6.8 1.6 6.8 4.5c0 3.2-2.4 6.4-6.8 9z"
-                fill="url(#brandBerryBody)"
-              />
-              <g fill="#f43f5e" opacity="0.85">
-                <circle cx="9.5" cy="12.6" r="0.8" />
-                <circle cx="14.5" cy="12.6" r="0.8" />
-                <circle cx="12" cy="14.8" r="0.8" />
-                <circle cx="10.3" cy="17.2" r="0.7" />
-                <circle cx="13.7" cy="17.2" r="0.7" />
-              </g>
-            </svg>
+            <img src={strawberryIcon} alt="" className="brand-img" />
           </span>
         </button>
 

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- far outer leaves (behind everything) -->
+  <path d="M62,72 C44,68 32,58 27,44 C42,46 56,54 66,66 Z"
+        fill="#2f9e44" stroke="#1a1d24" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M138,72 C156,68 168,58 173,44 C158,46 144,54 134,66 Z"
+        fill="#2f9e44" stroke="#1a1d24" stroke-width="6" stroke-linejoin="round"/>
+
+  <!-- main crown leaves -->
+  <path d="M78,64 C60,54 50,40 48,24 C64,30 76,42 84,58 Z"
+        fill="#40c057" stroke="#1a1d24" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M122,64 C140,54 150,40 152,24 C136,30 124,42 116,58 Z"
+        fill="#40c057" stroke="#1a1d24" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M100,60 C90,44 90,30 100,16 C110,30 110,44 100,60 Z"
+        fill="#51cf66" stroke="#1a1d24" stroke-width="6" stroke-linejoin="round"/>
+
+  <!-- berry body -->
+  <path d="M42,88 C42,64 68,52 100,52 C132,52 158,64 158,88
+           C158,124 130,158 100,186 C70,158 42,124 42,88 Z"
+        fill="#e8303f" stroke="#1a1d24" stroke-width="7" stroke-linejoin="round"/>
+
+  <!-- body shading (right side, subtle) -->
+  <path d="M128,70 C146,78 152,90 148,104 C144,126 126,150 106,170
+           C138,146 156,116 152,92 C150,80 140,72 128,70 Z"
+        fill="#c92a35" opacity="0.85"/>
+
+  <!-- highlight sweep on left shoulder -->
+  <path d="M60,84 C60,72 70,63 84,60"
+        fill="none" stroke="#ffffff" stroke-width="8"
+        stroke-linecap="round" opacity="0.5"/>
+
+  <!-- seeds -->
+  <g fill="#23272e">
+    <ellipse cx="76"  cy="102" rx="4.6" ry="6.4" transform="rotate(-14 76 102)"/>
+    <ellipse cx="100" cy="96"  rx="4.6" ry="6.4" transform="rotate(4 100 96)"/>
+    <ellipse cx="124" cy="102" rx="4.6" ry="6.4" transform="rotate(16 124 102)"/>
+    <ellipse cx="64"  cy="124" rx="4.4" ry="6.0" transform="rotate(-20 64 124)"/>
+    <ellipse cx="88"  cy="120" rx="4.4" ry="6.0"/>
+    <ellipse cx="112" cy="120" rx="4.4" ry="6.0" transform="rotate(8 112 120)"/>
+    <ellipse cx="136" cy="124" rx="4.4" ry="6.0" transform="rotate(20 136 124)"/>
+    <ellipse cx="76"  cy="144" rx="4.2" ry="5.8" transform="rotate(-10 76 144)"/>
+    <ellipse cx="100" cy="142" rx="4.2" ry="5.8"/>
+    <ellipse cx="124" cy="144" rx="4.2" ry="5.8" transform="rotate(12 124 144)"/>
+    <ellipse cx="88"  cy="164" rx="4.0" ry="5.4" transform="rotate(-6 88 164)"/>
+    <ellipse cx="112" cy="164" rx="4.0" ry="5.4" transform="rotate(8 112 164)"/>
+  </g>
+</svg>
