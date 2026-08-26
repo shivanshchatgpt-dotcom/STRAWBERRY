@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 900" width="900" height="900">
+  <defs>
+    <radialGradient id="bodyGrad" cx="0.36" cy="0.3" r="0.95">
+      <stop offset="0%" stop-color="#ff5a6e"/>
+      <stop offset="34%" stop-color="#f0233c"/>
+      <stop offset="72%" stop-color="#cf0f2a"/>
+      <stop offset="100%" stop-color="#9c0719"/>
+    </radialGradient>
+    <radialGradient id="sheen" cx="0.32" cy="0.22" r="0.5">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.85"/>
+      <stop offset="45%" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="leafGrad" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0%" stop-color="#7ed957"/>
+      <stop offset="55%" stop-color="#3fae49"/>
+      <stop offset="100%" stop-color="#1f7a33"/>
+    </linearGradient>
+    <linearGradient id="leafGrad2" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0%" stop-color="#5cc94a"/>
+      <stop offset="100%" stop-color="#226b30"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+    <filter id="dropsh" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="26" stdDeviation="30" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <g transform="rotate(-8 450 480)" filter="url(#dropsh)">
+    <!-- stem -->
+    <path d="M470,180 C474,140 480,110 500,84" fill="none" stroke="#2f8f3e" stroke-width="16" stroke-linecap="round"/>
+
+    <!-- back leaves -->
+    <path d="M450,210 C380,150 330,120 250,120 C310,180 380,220 445,235 Z" fill="url(#leafGrad2)"/>
+    <path d="M470,205 C540,140 600,115 680,118 C615,180 545,220 475,232 Z" fill="url(#leafGrad2)"/>
+    <path d="M440,225 C400,160 395,110 420,60 C460,115 470,175 460,228 Z" fill="url(#leafGrad)"/>
+    <path d="M480,228 C540,180 590,165 655,170 C600,225 540,250 485,242 Z" fill="url(#leafGrad)"/>
+    <path d="M445,232 C390,190 340,180 285,190 C340,235 400,252 442,246 Z" fill="url(#leafGrad)"/>
+
+    <!-- body -->
+    <path d="M235,330 C235,240 330,195 460,195 C590,195 685,240 685,330
+             C685,470 580,620 460,730 C340,620 235,470 235,330 Z" fill="url(#bodyGrad)"/>
+
+    <!-- glossy sheen top-left -->
+    <path d="M235,330 C235,240 330,195 460,195 C590,195 685,240 685,330
+             C685,470 580,620 460,730 C340,620 235,470 235,330 Z" fill="url(#sheen)"/>
+
+    <!-- specular streaks -->
+    <path d="M300,300 C310,262 360,235 420,228" fill="none" stroke="#ffffff"
+          stroke-width="26" stroke-linecap="round" opacity="0.5" filter="url(#soft)"/>
+    <path d="M620,300 C612,268 580,246 540,236" fill="none" stroke="#ffffff"
+          stroke-width="14" stroke-linecap="round" opacity="0.28" filter="url(#soft)"/>
+
+    <!-- seeds -->
+    <g fill="#ffe9a8" stroke="#c8871f" stroke-width="3">
+      <ellipse cx="330" cy="360" rx="11" ry="16" transform="rotate(-14 330 360)"/>
+      <ellipse cx="415" cy="330" rx="11" ry="16"/>
+      <ellipse cx="500" cy="322" rx="11" ry="16" transform="rotate(6 500 322)"/>
+      <ellipse cx="585" cy="345" rx="11" ry="16" transform="rotate(16 585 345)"/>
+      <ellipse cx="290" cy="445" rx="10.5" ry="15" transform="rotate(-20 290 445)"/>
+      <ellipse cx="375" cy="420" rx="10.5" ry="15" transform="rotate(-4 375 420)"/>
+      <ellipse cx="462" cy="410" rx="10.5" ry="15" transform="rotate(5 462 410)"/>
+      <ellipse cx="548" cy="418" rx="10.5" ry="15" transform="rotate(14 548 418)"/>
+      <ellipse cx="628" cy="440" rx="10.5" ry="15" transform="rotate(22 628 440)"/>
+      <ellipse cx="330" cy="515" rx="10" ry="14.5" transform="rotate(-12 330 515)"/>
+      <ellipse cx="420" cy="500" rx="10" ry="14.5"/>
+      <ellipse cx="508" cy="498" rx="10" ry="14.5" transform="rotate(8 508 498)"/>
+      <ellipse cx="592" cy="512" rx="10" ry="14.5" transform="rotate(18 592 512)"/>
+      <ellipse cx="375" cy="595" rx="9.5" ry="14" transform="rotate(-8 375 595)"/>
+      <ellipse cx="462" cy="588" rx="9.5" ry="14" transform="rotate(3 462 588)"/>
+      <ellipse cx="545" cy="595" rx="9.5" ry="14" transform="rotate(12 545 595)"/>
+      <ellipse cx="420" cy="668" rx="9" ry="13" transform="rotate(-4 420 668)"/>
+      <ellipse cx="495" cy="662" rx="9" ry="13" transform="rotate(7 495 662)"/>
+    </g>
+    <!-- seed highlights -->
+    <g fill="#fffbe8" opacity="0.85">
+      <circle cx="327" cy="354" r="3.4"/>
+      <circle cx="412" cy="324" r="3.4"/>
+      <circle cx="497" cy="316" r="3.4"/>
+      <circle cx="582" cy="339" r="3.4"/>
+      <circle cx="372" cy="414" r="3.2"/>
+      <circle cx="459" cy="404" r="3.2"/>
+      <circle cx="417" cy="494" r="3"/>
+      <circle cx="505" cy="492" r="3"/>
+      <circle cx="459" cy="582" r="2.8"/>
+    </g>
+  </g>
+</svg>
