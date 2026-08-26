@@ -22,6 +22,7 @@ pub fn run() {
                 e.into()
             })?;
             app.manage(Arc::new(st));
+            app.manage(screen::capture::CaptureHandle::default());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

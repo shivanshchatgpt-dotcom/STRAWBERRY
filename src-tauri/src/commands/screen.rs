@@ -5,8 +5,9 @@ use tauri::State;
 use serde::{Deserialize, Serialize};
 use crate::state::AppState;
 use crate::error;
-use crate::screen::capture::CaptureConfig;
+use crate::screen::capture::{CaptureConfig, CaptureHandle, CaptureService};
 use rusqlite::OptionalExtension;
+use std::sync::Mutex;
 
 type Cmd<T> = Result<T, String>;
 

@@ -68,10 +68,12 @@ pub struct FrameMeta {
     pub thumbnail_path: Option<String>,
 }
 
+/// Shared handle so commands can start/stop the background thread.
+#[derive(Clone, Default)]
+pub struct CaptureHandle(pub Arc<Mutex<Option<CaptureService>>>);
+
 /// Screen capture service — runs in background thread.
-/// 
-/// Note: This is a simplified implementation. Full cross-platform capture
-/// with xcap 0.9+ requires platform-specific implementations.
+/// Capture uses `grim` (Wayland) with X11 fallback via `scrot`/`import`.
 #[allow(dead_code)]
 pub struct CaptureService {
     config: CaptureConfig,
@@ -79,19 +81,22 @@ pub struct CaptureService {
     running: Arc<Mutex<bool>>,
     last_hash: Arc<Mutex<Option<String>>>,
     last_app: Arc<Mutex<Option<String>>>,
-    // Using a simple connection wrapper that's thread-safe
-    db_conn: Arc<Mutex<rusqlite::Connection>>,
+    app_state: Arc<crate::state::AppState>,
 }
 
 impl CaptureService {
-    pub fn new(config: CaptureConfig, data_dir: PathBuf, db_conn: Arc<Mutex<rusqlite::Connection>>) -> Self {
+    pub fn new(
+        config: CaptureConfig,
+        data_dir: PathBuf,
+        app_state: Arc<crate::state::AppState>,
+    ) -> Self {
         Self {
             config,
             data_dir,
             running: Arc::new(Mutex::new(false)),
             last_hash: Arc::new(Mutex::new(None)),
             last_app: Arc::new(Mutex::new(None)),
-            db_conn,
+            app_state,
         }
     }
 
@@ -168,9 +173,53 @@ impl CaptureService {
     }
     
     fn capture_screen(&self) -> Result<(DynamicImage, String, String), String> {
-        // Stub: In a real implementation, this would use xcap 0.9+ for X11/Wayland
-        // For now, return an error to indicate capture is not fully implemented
-        Err("Screen capture not fully implemented yet. Install grim (Wayland) or xcap (X11) and implement capture_screen().".to_string())
+        // 1. KDE Wayland: spectacle (KWin ignores wlr-screencopy, so grim fails).
+        let session = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default().to_uppercase();
+        if session.contains("KDE") {
+            if let Ok(img) = self.capture_spectacle() {
+                let (app, title) = active_window_best_effort();
+                return Ok((img, app, title));
+            }
+        }
+        // 2. wlroots-style Wayland: grim writes PNG to stdout.
+        if let Ok(out) = std::process::Command::new("grim")
+            .args(["-t", "png", "-"])
+            .output()
+        {
+            if out.status.success() && !out.stdout.is_empty() {
+                let img = image::load_from_memory(&out.stdout)
+                    .map_err(|e| format!("grim PNG decode: {e}"))?;
+                let (app, title) = active_window_best_effort();
+                return Ok((img, app, title));
+            }
+        }
+        // 3. X11 fallbacks
+        for tool in [["scrot", "-z", "-o", "/dev/stdout"].as_slice(), ["import", "-window", "root", "-"].as_slice()] {
+            if let Ok(out) = std::process::Command::new(tool[0]).args(&tool[1..]).output() {
+                if out.status.success() && !out.stdout.is_empty() {
+                    if let Ok(img) = image::load_from_memory(&out.stdout) {
+                        let (app, title) = active_window_best_effort();
+                        return Ok((img, app, title));
+                    }
+                }
+            }
+        }
+        Err("No screen capture backend available (install spectacle on KDE, grim on wlroots, or scrot on X11).".to_string())
+    }
+
+    fn capture_spectacle(&self) -> Result<DynamicImage, String> {
+        let tmp = self.data_dir.join(".spectacle-cap.png");
+        let out = std::process::Command::new("spectacle")
+            .args(["-b", "-n", "-f", "-o"])
+            .arg(&tmp)
+            .output()
+            .map_err(|e| format!("spectacle spawn: {e}"))?;
+        if !out.status.success() || !tmp.exists() {
+            return Err("spectacle failed".to_string());
+        }
+        let img = image::open(&tmp).map_err(|e| format!("spectacle PNG decode: {e}"));
+        let _ = std::fs::remove_file(&tmp);
+        img
     }
     
     fn is_blocked(&self, app_name: &str, window_title: &str) -> bool {
@@ -232,7 +281,11 @@ impl CaptureService {
     }
     
     fn persist_frame(&self, frame: &FrameMeta) -> Result<(), String> {
-        let conn = self.db_conn.lock().map_err(|_| "DB lock")?;
+        let conn = self
+            .app_state
+            .conn
+            .lock()
+            .map_err(|_| "DB lock")?;
         conn.execute(
             "INSERT INTO screen_frames (ts, app_name, window_title, file_path, width, height, byte_size, perceptual_hash, ocr_text, is_blurred, thumbnail_path)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
@@ -262,42 +315,35 @@ impl Clone for CaptureService {
             running: self.running.clone(),
             last_hash: self.last_hash.clone(),
             last_app: self.last_app.clone(),
-            db_conn: self.db_conn.clone(),
+            app_state: self.app_state.clone(),
         }
     }
 }
 
-// Platform-specific window info
-#[cfg(target_os = "linux")]
-fn get_active_window_linux() -> (String, String) {
-    // Try xdotool first
-    if let Ok(output) = std::process::Command::new("xdotool")
+/// Best-effort active-window info. X11: xdotool. Wayland/KDE: KWin DBus
+/// query is interactive, so we fall back to the desktop session name —
+/// blocklist still applies to whatever title we can obtain.
+fn active_window_best_effort() -> (String, String) {
+    // X11 / XWayland path
+    if let Ok(out) = std::process::Command::new("xdotool")
         .args(["getactivewindow", "getwindowname"])
         .output()
     {
-        if output.status.success() {
-            let title = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            // Try to get app name from WM_CLASS
-            if let Ok(output) = std::process::Command::new("xdotool")
+        if out.status.success() {
+            let title = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            let app = std::process::Command::new("xdotool")
                 .args(["getactivewindow", "getwindowclassname"])
                 .output()
-            {
-                if output.status.success() {
-                    let class = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    return (class, title);
-                }
-            }
-            return ("unknown".to_string(), title);
+                .ok()
+                .filter(|o| o.status.success())
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "x11".to_string());
+            return (app, title);
         }
-        ("unknown".to_string(), "unknown".to_string())
-    } else {
-        ("unknown".to_string(), "unknown".to_string())
     }
-}
-
-#[cfg(not(target_os = "linux"))]
-fn get_active_window_linux() -> (String, String) {
-    ("unknown".to_string(), "unknown".to_string())
+    let session = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_else(|_| "wayland".to_string());
+    (session, String::new())
 }
 
 #[cfg(test)]
