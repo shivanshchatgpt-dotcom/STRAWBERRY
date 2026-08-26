@@ -1,5 +1,6 @@
 pub mod chats;
 pub mod folders;
+pub mod health;
 pub mod handoff;
 pub mod inbox;
 pub mod news;

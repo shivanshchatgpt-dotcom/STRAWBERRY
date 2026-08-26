@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ResumeBanner } from "./ResumeBanner";
 import { api } from "../../lib/api";
-import type { planner } from "../../lib/api";
+import type { planner, health } from "../../lib/api";
 import { useAppStore } from "../../store/appStore";
 
 type Section = planner.BriefingSection;
@@ -37,6 +37,20 @@ export function DashboardView() {
       setBriefing([]);
     }
   }, []);
+
+  const [health, setHealth] = useState<health.HealthReport | null>(null);
+  const [healthBusy, setHealthBusy] = useState(false);
+
+  const scanHealth = async () => {
+    setHealthBusy(true);
+    try {
+      setHealth(await api.healthReport());
+    } finally {
+      setHealthBusy(false);
+    }
+  };
+
+  const fmtGb = (b: number) => (b >= 1073741824 ? `${(b / 1073741824).toFixed(1)} GB` : `${Math.round(b / 1048576)} MB`);
 
   const [story, setStory] = useState<string | null>(null);
   const [storyBusy, setStoryBusy] = useState(false);
@@ -248,6 +262,48 @@ export function DashboardView() {
           })}
           {habits.length === 0 && <div className="text-dim">No habits yet.</div>}
         </div>
+      </section>
+
+      {/* ---------------------------- Health Lens -------------------------- */}
+      <section className="panel" aria-label="Health Lens">
+        <h3 className="panel-title">🩺 Health Lens</h3>
+        <p className="text-dim" style={{ fontSize: 12.5, margin: "4px 0 10px" }}>
+          Read-only scan: disk space, cache bloat, biggest home folders. Kuch bhi delete nahi hota.
+        </p>
+        <div className="quick-row">
+          <button className="btn primary" disabled={healthBusy} onClick={() => void scanHealth()}>
+            {healthBusy ? <span className="spinner" /> : null} 🩺 Scan Now
+          </button>
+        </div>
+        {health && (
+          <div className="health-grid">
+            <div className="stat-box">
+              <div className="stat-value">{fmtGb(health.diskFreeBytes)}</div>
+              <div className="stat-label">Disk free</div>
+            </div>
+            {health.caches.slice(0, 4).map((c) => (
+              <div key={c.path} className="stat-box">
+                <div className="stat-value">{fmtGb(c.bytes)}</div>
+                <div className="stat-label">{c.path}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        {health && (
+          <ul className="text-dim" style={{ fontSize: 12.5, marginTop: 10 }}>
+            {health.notes.map((n, i) => (
+              <li key={i}>{n}</li>
+            ))}
+            {health.topHomeDirs.length > 0 && (
+              <li>
+                Biggest home folders:{" "}
+                {health.topHomeDirs
+                  .map((d) => `${d.path} (${fmtGb(d.bytes)})`)
+                  .join(" · ")}
+              </li>
+            )}
+          </ul>
+        )}
       </section>
 
       {/* ---------------------------- Export My Story --------------------- */}

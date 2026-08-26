@@ -175,6 +175,9 @@ export const api = {
   exportMyStory: (repoPath: string | null, days?: number) =>
     call<string>("export_my_story", { repoPath, days }),
 
+  // Health Lens ----------------------------------------------------------------
+  healthReport: () => call<health.HealthReport>("health_report"),
+
   // Utilities -----------------------------------------------------------------
   getAppInfo: () => call<AppInfo>("get_app_info"),
 
@@ -206,6 +209,21 @@ export const api = {
     call<void>("dismiss_resume_point", { resumeId }),
   getDaySummary: () => call<resume.DaySummary>("get_day_summary"),
 };
+
+export namespace health {
+  export interface CacheSize {
+    path: string;
+    bytes: number;
+  }
+  export interface HealthReport {
+    supported: boolean;
+    diskFreeBytes: number;
+    diskTotalBytes: number;
+    caches: CacheSize[];
+    topHomeDirs: CacheSize[];
+    notes: string[];
+  }
+}
 
 export namespace inbox {
   export interface InboxItem {

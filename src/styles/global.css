@@ -1671,3 +1671,11 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   max-height: 340px;
   margin-top: 10px;
 }
+
+.health-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+  max-width: 900px;
+}
