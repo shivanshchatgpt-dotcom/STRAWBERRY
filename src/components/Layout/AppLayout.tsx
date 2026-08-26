@@ -123,7 +123,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
             const next =
               document.documentElement.dataset.theme === "dark" ? "light" : "dark";
             document.documentElement.dataset.theme = next;
-            localStorage.setItem("strawberry-theme", next);
+            localStorage.setItem("strawberry-theme-v2", next);
           }}
         >
           {document.documentElement.dataset.theme === "dark" ? "☀️" : "🌙"}

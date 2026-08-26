@@ -70,9 +70,9 @@
 }
 
 [data-theme="light"] {
-  --bg: #eef1f8;
-  --bg-raised: rgba(255, 255, 255, 0.55);
-  --bg-panel: rgba(255, 255, 255, 0.62);
+  --bg: #f7f9fd;
+  --bg-raised: rgba(255, 255, 255, 0.6);
+  --bg-panel: rgba(255, 255, 255, 0.66);
   --bg-hover: rgba(255, 255, 255, 0.85);
   --bg-active: rgba(255, 255, 255, 0.95);
   --bg-inset: rgba(15, 23, 42, 0.05);
@@ -138,8 +138,8 @@ body::before {
 }
 [data-theme="light"] body::before {
   background:
-    linear-gradient(100deg, rgba(244, 246, 252, 0.88) 0%, rgba(244, 246, 252, 0.55) 46%, rgba(244, 246, 252, 0.2) 100%),
-    linear-gradient(0deg, rgba(244, 246, 252, 0.7) 0%, rgba(244, 246, 252, 0) 42%),
+    linear-gradient(100deg, rgba(250, 251, 254, 0.92) 0%, rgba(250, 251, 254, 0.6) 46%, rgba(250, 251, 254, 0.16) 100%),
+    linear-gradient(0deg, rgba(250, 251, 254, 0.78) 0%, rgba(250, 251, 254, 0) 42%),
     url("../assets/strawberry-hero.png") no-repeat right -6% center / 78vh auto,
     radial-gradient(46rem 34rem at 10% -6%, rgba(244, 63, 94, 0.16), transparent 62%),
     radial-gradient(40rem 30rem at 92% 8%, rgba(139, 122, 250, 0.14), transparent 60%),
@@ -395,7 +395,7 @@ h1, h2, h3, h4 {
   height: var(--topbar-h);
   padding: 0 14px;
   flex-shrink: 0;
-  background: color-mix(in srgb, rgba(16, 19, 28, 0.5) 72%, transparent);
+  background: color-mix(in srgb, rgba(255, 255, 255, 0.55) 72%, transparent);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   border-bottom: 1px solid var(--border);

@@ -5,7 +5,7 @@ import "./styles/global.css";
 
 // Theme bootstrap — dark by default, persisted choice wins.
 document.documentElement.dataset.theme =
-  (localStorage.getItem("strawberry-theme") as "dark" | "light") ?? "dark";
+  (localStorage.getItem("strawberry-theme-v2") as "dark" | "light") ?? "light";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
