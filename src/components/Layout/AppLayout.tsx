@@ -4,8 +4,9 @@ import { useAppStore } from "../../store/appStore";
 import { SearchBox } from "../Search/SearchBox";
 import { DashboardView } from "../Dashboard/DashboardView";
 import { ScreensView } from "../Screens/ScreensView";
+import { InboxView } from "../Inbox/InboxView";
 
-type View = "dashboard" | "tree" | "screens";
+type View = "dashboard" | "tree" | "screens" | "inbox";
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const openDialog = useAppStore((s) => s.openDialog);
@@ -31,6 +32,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
     clearSearch();
     setView("screens");
   };
+  const goInbox = () => {
+    clearSearch();
+    setView("inbox");
+  };
 
   // Keyboard: Ctrl/Cmd+1 dashboard, Ctrl/Cmd+2 tree, Ctrl/Cmd+3 screens.
   useEffect(() => {
@@ -44,6 +49,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
       } else if ((e.ctrlKey || e.metaKey) && e.key === "3") {
         e.preventDefault();
         goScreens();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "4") {
+        e.preventDefault();
+        goInbox();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -84,6 +92,13 @@ export function AppLayout({ children }: { children: ReactNode }) {
           >
             📺 Screens
           </button>
+          <button
+            className={`nav-tab${view === "inbox" ? " active" : ""}`}
+            onClick={goInbox}
+            title="Ctrl/Cmd+4"
+          >
+            📥 Inbox
+          </button>
         </nav>
 
         <SearchBox />
@@ -102,7 +117,15 @@ export function AppLayout({ children }: { children: ReactNode }) {
         </span>
       </header>
       <div className="main-area">
-        {view === "screens" ? <ScreensView /> : showDashboard ? <DashboardView /> : children}
+        {view === "screens" ? (
+          <ScreensView />
+        ) : view === "inbox" ? (
+          <InboxView />
+        ) : showDashboard ? (
+          <DashboardView />
+        ) : (
+          children
+        )}
       </div>
     </div>
   );

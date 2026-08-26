@@ -165,6 +165,12 @@ export const api = {
 
   listScreenBlocklist: () => call<ScreenBlocklistItem[]>("list_screen_blocklist"),
 
+  // Inbox ----------------------------------------------------------------------
+  getInboxItems: (kind: string | null, limit?: number) =>
+    call<inbox.InboxItem[]>("get_inbox_items", { kind, limit }),
+  getInboxCounts: () => call<inbox.InboxCounts>("get_inbox_counts"),
+  deleteInboxItem: (chatId: string) => call<void>("delete_inbox_item", { chatId }),
+
   // Utilities -----------------------------------------------------------------
   getAppInfo: () => call<AppInfo>("get_app_info"),
 
@@ -196,6 +202,23 @@ export const api = {
     call<void>("dismiss_resume_point", { resumeId }),
   getDaySummary: () => call<resume.DaySummary>("get_day_summary"),
 };
+
+export namespace inbox {
+  export interface InboxItem {
+    chatId: string;
+    title: string;
+    kind: string | null;
+    preview: string | null;
+    createdAt: string;
+  }
+  export interface InboxCounts {
+    all: number;
+    note: number;
+    code: number;
+    error: number;
+    url: number;
+  }
+}
 
 export namespace resume {
   export interface DaySummary {
