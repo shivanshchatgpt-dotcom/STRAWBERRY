@@ -8,6 +8,7 @@ mod snapshot;
 mod state;
 mod tabs;
 mod storage;
+mod workspace;
 
 use std::sync::Arc;
 
@@ -86,6 +87,10 @@ pub fn run() {
             commands::screen::add_screen_blocklist,
             commands::screen::remove_screen_blocklist,
             commands::screen::list_screen_blocklist,
+            commands::workspace::freeze_work_space,
+            commands::workspace::list_work_spaces,
+            commands::workspace::restore_work_space,
+            commands::workspace::delete_work_space,
             commands::snapshot::capture_work_snapshot,
             commands::snapshot::get_latest_work_snapshot,
             commands::snapshot::list_work_snapshots,

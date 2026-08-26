@@ -12,6 +12,7 @@ pub mod search;
 pub mod snapshot;
 pub mod story;
 pub mod tabs;
+pub mod workspace;
 
 use std::sync::Arc;
 

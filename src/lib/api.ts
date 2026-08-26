@@ -216,6 +216,14 @@ export const api = {
   toggleHabitDate: (habitId: number, date: string) =>
     call<boolean>("toggle_habit_date", { habitId, date }),
 
+  // 🧊 Freeze & Resume ------------------------------------------------------------
+  freezeWorkSpace: () => call<ws.WorkSpace>("freeze_work_space"),
+  listWorkSpaces: (limit = 20) =>
+    call<ws.WorkSpaceRow[]>("list_work_spaces", { limit }),
+  restoreWorkSpace: (id: string) =>
+    call<ws.RestoreReport>("restore_work_space", { id }),
+  deleteWorkSpace: (id: string) => call<void>("delete_work_space", { id }),
+
   // Context Recall (work snapshots) ---------------------------------------------
   captureWorkSnapshot: () => call<snap.WorkSnapshot>("capture_work_snapshot"),
   getLatestWorkSnapshot: () =>
@@ -352,4 +360,47 @@ export namespace snap {
     relatedNotes: RelatedNote[];
     story: string;
   }
+}
+
+
+export namespace ws {
+  export interface FrozenWindow {
+    app: string;
+    title: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    desktop: number;
+    active: boolean;
+    launch?: string | null;
+  }
+  export interface BrowserRestore {
+    browser: string;
+    urls: string[];
+  }
+  export interface DevServer {
+    port: number;
+    pid?: number | null;
+    procName: string;
+    cwd: string;
+    cmd: string;
+  }
+  export interface WorkSpace {
+    id: string;
+    name: string;
+    story: string;
+    createdAt: string;
+    windows: FrozenWindow[];
+    browsers: BrowserRestore[];
+    terminals: string[];
+    devServers: DevServer[];
+  }
+  export interface RestoreReport {
+    launched: string[];
+    failed: string[];
+    pendingServers: DevServer[];
+  }
+  /** id, name, story, createdAt */
+  export type WorkSpaceRow = [string, string, string, string];
 }

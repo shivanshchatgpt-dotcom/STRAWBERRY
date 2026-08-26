@@ -2396,3 +2396,52 @@ pre.original-text {
 .agenda-dot { width: 9px; height: 9px; border-radius: 99px; flex-shrink: 0; box-shadow: 0 0 10px currentColor; }
 .agenda-main { flex: 1; min-width: 0; }
 .agenda-main small { display: block; color: var(--text-faint); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ═══════════════ 🧊 FREEZE & RESUME ═══════════════ */
+.freeze-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid color-mix(in srgb, var(--info) 30%, transparent);
+}
+.restore-report .report-list {
+  list-style: none;
+  margin: 4px 0;
+  padding: 0;
+  font-size: 12.5px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.report-list.ok li { color: var(--accent); }
+.report-list.bad li { color: var(--danger); }
+.server-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+}
+.server-row code {
+  flex: 1;
+  font-size: 11.5px;
+  background: var(--bg-inset);
+  border-radius: var(--radius-xs);
+  padding: 5px 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ws-card .ws-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+.ws-story {
+  margin: 6px 0 10px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.ws-actions { display: flex; gap: 8px; }

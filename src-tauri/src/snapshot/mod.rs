@@ -337,6 +337,16 @@ fn clipboard_head() -> Option<String> {
     None
 }
 
+
+/// Public URL-only views for the workspace freezer.
+pub fn firefox_tab_urls() -> Option<Vec<String>> {
+    Some(firefox_tabs()?.into_iter().map(|t| t.url).collect())
+}
+
+pub fn chrome_recent_urls_public() -> Option<Vec<String>> {
+    Some(chrome_recent_pages()?.into_iter().map(|t| t.url).collect())
+}
+
 // ---------------------------------------------------------------------------
 // Story generation + related notes
 // ---------------------------------------------------------------------------
