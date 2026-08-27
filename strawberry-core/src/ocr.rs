@@ -128,21 +128,19 @@ pub fn ocr_image_rgba(width: u32, height: u32, rgba_pixels: &[u8]) -> OcrResult 
                 for dx in 0..col_width {
                     let px = cx + dx as u32;
                     let py = ry + dy as u32;
-                    if px < width && py < height {
-                        if bw_grid[(py * width + px) as usize] {
-                            cell_pixels += 1;
-                            if dy < h_third {
-                                top += 1;
-                            }
-                            if dy >= row_height - h_third {
-                                bottom += 1;
-                            }
-                            if dx < w_third {
-                                left += 1;
-                            }
-                            if dx >= col_width - w_third {
-                                right += 1;
-                            }
+                    if px < width && py < height && bw_grid[py as usize * width as usize + px as usize] {
+                        cell_pixels += 1;
+                        if dy < h_third {
+                            top += 1;
+                        }
+                        if dy >= row_height - h_third {
+                            bottom += 1;
+                        }
+                        if dx < w_third {
+                            left += 1;
+                        }
+                        if dx >= col_width - w_third {
+                            right += 1;
                         }
                     }
                 }
@@ -260,6 +258,30 @@ mod tests {
         let res = ocr_image_rgba(100, 50, &pixels);
         assert_eq!(res.width, 100);
         assert_eq!(res.height, 50);
-        assert!(res.extracted_text.len() > 0);
+        assert!(!res.extracted_text.is_empty());
+    }
+
+    #[test]
+    fn test_ocr_box_drawing_character_reconstruction() {
+        let width = 24u32;
+        let height = 36u32;
+        let mut pixels = vec![255u8; (width * height * 4) as usize];
+
+        // Draw top-left box corner in first cell (8x12 px): right half of top third and bottom half of right third
+        for x in 4..8 {
+            for y in 4..12 {
+                let idx = ((y * width + x) * 4) as usize;
+                pixels[idx] = 0;
+                pixels[idx + 1] = 0;
+                pixels[idx + 2] = 0;
+            }
+        }
+
+        let res = ocr_image_rgba(width, height, &pixels);
+        assert!(
+            res.extracted_text.contains('┌') || res.extracted_text.contains('├') || res.extracted_text.contains('+'),
+            "OCR result should reconstruct corner symbol, got: {}",
+            res.extracted_text
+        );
     }
 }

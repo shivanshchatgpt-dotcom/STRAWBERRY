@@ -140,6 +140,55 @@ pub fn read_image(backend: Backend) -> Option<ClipboardImage> {
     read_image_if_changed(backend, 0).map(|(img, _)| img)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compute_bytes_sig_stability() {
+        let buf = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        let sig1 = compute_bytes_sig(0, 0, &buf);
+        let sig2 = compute_bytes_sig(0, 0, &buf);
+        assert_eq!(sig1, sig2);
+
+        let sig_dim = compute_bytes_sig(100, 200, &buf);
+        let sig_dim2 = compute_bytes_sig(100, 200, &buf);
+        assert_eq!(sig_dim, sig_dim2);
+        assert_ne!(sig1, sig_dim);
+    }
+
+    #[test]
+    fn test_wayland_png_decoding_simulated() {
+        // Create an in-memory 15x25 PNG image buffer
+        let mut png_bytes: Vec<u8> = Vec::new();
+        let img = image::RgbaImage::new(15, 25);
+        let mut cursor = std::io::Cursor::new(&mut png_bytes);
+        img.write_to(&mut cursor, image::ImageFormat::Png).unwrap();
+
+        let sig = compute_bytes_sig(0, 0, &png_bytes);
+        // Load dynamically from memory like Wayland path
+        let dynamic_img = image::load_from_memory(&png_bytes).unwrap();
+        let rgba = dynamic_img.to_rgba8();
+        let (width, height) = rgba.dimensions();
+
+        assert_eq!(width, 15);
+        assert_eq!(height, 25);
+        assert_eq!(rgba.as_raw().len(), 15 * 25 * 4);
+
+        let decoded_img = ClipboardImage {
+            width,
+            height,
+            rgba_bytes: rgba.into_raw(),
+            png_bytes: Some(png_bytes.clone()),
+        };
+        assert_eq!(decoded_img.width, 15);
+        assert_eq!(decoded_img.height, 25);
+
+        // Verification of signature equality to prevent polling loop
+        assert_eq!(sig, compute_bytes_sig(0, 0, &png_bytes));
+    }
+}
+
 /// How long the written selection must stay available.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Persist {

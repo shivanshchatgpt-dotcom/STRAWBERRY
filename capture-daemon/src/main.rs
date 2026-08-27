@@ -472,6 +472,7 @@ mod tests {
 
     #[test]
     fn test_save_image_capture_png_encoding() {
+        let _guard = super::db::test_env::lock();
         let dummy_rgba = vec![255u8; 10 * 10 * 4];
         let img = super::clip::ClipboardImage {
             width: 10,
@@ -487,7 +488,7 @@ mod tests {
             confidence_pct: 100,
         };
         let res = super::save_image_capture(&img, &ocr);
-        assert!(res.is_ok());
+        assert!(res.is_ok(), "save_image_capture failed: {:?}", res.err());
         let (path, _id) = res.unwrap();
         assert!(path.exists());
         let bytes = std::fs::read(&path).unwrap();
