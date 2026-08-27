@@ -14,9 +14,11 @@ pub mod ast;
 pub mod brief;
 pub mod extractor;
 pub mod handoff;
+pub mod ocr;
 pub mod rules;
 
 pub use ast::{analyze_source, SymbolKind, SymbolItem, SymbolicAnalysis};
+pub use ocr::{is_diagram_format, ocr_image_rgba, preserve_diagram, OcrResult};
 pub use brief::{generate, GeneratedBrief, Stats};
 pub use extractor::{extract, CodeBlock, Extraction, Identifier, RejectedOption};
 pub use handoff::{

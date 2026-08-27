@@ -4,7 +4,7 @@ import type { inbox } from "../../lib/api";
 import { useAppStore } from "../../store/appStore";
 import { formatDate } from "../../lib/utils";
 
-type KindFilter = "all" | "note" | "code" | "error" | "url";
+type KindFilter = "all" | "note" | "code" | "error" | "url" | "image" | "diagram";
 
 const KIND_META: Record<KindFilter, { label: string; icon: string }> = {
   all: { label: "All", icon: "📥" },
@@ -12,6 +12,8 @@ const KIND_META: Record<KindFilter, { label: string; icon: string }> = {
   code: { label: "Code", icon: "🧩" },
   error: { label: "Errors", icon: "🔥" },
   url: { label: "Links", icon: "🔗" },
+  image: { label: "Images", icon: "🖼️" },
+  diagram: { label: "Diagrams", icon: "📊" },
 };
 
 /**

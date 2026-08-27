@@ -290,6 +290,8 @@ export namespace inbox {
     code: number;
     error: number;
     url: number;
+    image?: number;
+    diagram?: number;
   }
 }
 
