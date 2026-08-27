@@ -367,10 +367,7 @@ fn show_image_popup(img: clip::ClipboardImage, ocr: core_ocr::OcrResult) {
 }
 
 fn save_capture(kind: &str, text: &str) -> Result<std::path::PathBuf, String> {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    let dir = std::path::PathBuf::from(home)
-        .join(".strawberry")
-        .join("captures");
+    let dir = db::app_data_dir().join("captures");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
     let ts = SystemTime::now()
@@ -423,10 +420,7 @@ fn save_image_capture(
     img: &clip::ClipboardImage,
     ocr: &core_ocr::OcrResult,
 ) -> Result<(std::path::PathBuf, String), String> {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    let dir = std::path::PathBuf::from(home)
-        .join(".strawberry")
-        .join("captures");
+    let dir = db::app_data_dir().join("captures");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
     let ts = SystemTime::now()

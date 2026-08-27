@@ -64,14 +64,11 @@ pub fn compute_bytes_sig(width: u32, height: u32, bytes: &[u8]) -> u64 {
     width.hash(&mut hasher);
     height.hash(&mut hasher);
     bytes.len().hash(&mut hasher);
-    if let Some(first) = bytes.first() {
-        first.hash(&mut hasher);
-    }
-    if let Some(last) = bytes.last() {
-        last.hash(&mut hasher);
-    }
-    if bytes.len() > 100 {
-        bytes[bytes.len() / 2].hash(&mut hasher);
+    if !bytes.is_empty() {
+        let step = (bytes.len() / 64).max(1);
+        for i in (0..bytes.len()).step_by(step) {
+            bytes[i].hash(&mut hasher);
+        }
     }
     hasher.finish()
 }

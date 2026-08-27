@@ -79,10 +79,11 @@ pub fn ocr_image_rgba(width: u32, height: u32, rgba_pixels: &[u8]) -> OcrResult 
         };
     }
 
-    // Step 1: Binarize image (convert RGBA pixels to Black/White matrix)
+    // Step 1: Binarize image (adaptive thresholding handling both light & dark themes)
     let total_pixels = (width as usize) * (height as usize);
-    let mut bw_grid: Vec<bool> = vec![false; total_pixels];
-    let mut dark_pixel_count = 0;
+    let mut lums: Vec<u32> = vec![0; total_pixels];
+    let mut sum_lum: u64 = 0;
+    let mut opaque_pixels = 0usize;
 
     for y in 0..height {
         for x in 0..width {
@@ -92,14 +93,38 @@ pub fn ocr_image_rgba(width: u32, height: u32, rgba_pixels: &[u8]) -> OcrResult 
             let b = rgba_pixels[idx + 2] as u32;
             let a = rgba_pixels[idx + 3] as u32;
 
-            // Calculate luminance
-            let lum = (r * 299 + g * 587 + b * 114) / 1000;
-            // Dark pixel on light background or opaque pixel
-            let is_dark = a > 128 && lum < 140;
-            bw_grid[(y * width + x) as usize] = is_dark;
-            if is_dark {
-                dark_pixel_count += 1;
+            if a > 128 {
+                let lum = (r * 299 + g * 587 + b * 114) / 1000;
+                lums[y as usize * width as usize + x as usize] = lum;
+                sum_lum += lum as u64;
+                opaque_pixels += 1;
+            } else {
+                lums[y as usize * width as usize + x as usize] = 255;
             }
+        }
+    }
+
+    let avg_lum = if opaque_pixels > 0 {
+        (sum_lum / opaque_pixels as u64) as u32
+    } else {
+        128
+    };
+
+    let mut bw_grid: Vec<bool> = vec![false; total_pixels];
+    let mut foreground_pixel_count = 0;
+
+    for i in 0..total_pixels {
+        let lum = lums[i];
+        // If background is light (avg_lum >= 128), text is dark (lum < avg_lum - 15).
+        // If background is dark (avg_lum < 128), text is bright (lum > avg_lum + 15).
+        let is_fg = if avg_lum >= 128 {
+            lum < avg_lum.saturating_sub(15)
+        } else {
+            lum > avg_lum + 15
+        };
+        bw_grid[i] = is_fg;
+        if is_fg {
+            foreground_pixel_count += 1;
         }
     }
 
@@ -197,7 +222,7 @@ pub fn ocr_image_rgba(width: u32, height: u32, rgba_pixels: &[u8]) -> OcrResult 
     }
 
     let raw_text = if lines.is_empty() {
-        format!("[Image: {}x{} px, {} dark pixels]", width, height, dark_pixel_count)
+        format!("[Image: {}x{} px, {} foreground pixels]", width, height, foreground_pixel_count)
     } else {
         lines.join("\n")
     };
@@ -214,7 +239,7 @@ pub fn ocr_image_rgba(width: u32, height: u32, rgba_pixels: &[u8]) -> OcrResult 
         is_diagram,
         width,
         height,
-        confidence_pct: if dark_pixel_count > 0 { 92 } else { 50 },
+        confidence_pct: if foreground_pixel_count > 0 { 92 } else { 50 },
     }
 }
 
