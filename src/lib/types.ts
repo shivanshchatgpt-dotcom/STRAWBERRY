@@ -296,3 +296,32 @@ export interface DeterministicReport {
   extractedSymbols: number;
   summaryMarkdown: string;
 }
+
+// ---------------------------------------------------------------------------
+// Calendar & Workshop Events
+// ---------------------------------------------------------------------------
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  description?: string | null;
+  startAt: string;
+  endAt: string;
+  timezone: string;
+  category: string;
+  sourceUrl?: string | null;
+  location?: string | null;
+  isAllDay: boolean;
+  certificateOffered: boolean;
+  registrationRequired: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EventReminder {
+  id: string;
+  eventId: string;
+  minutesBefore: number;
+  enabled: boolean;
+  triggered: boolean;
+}

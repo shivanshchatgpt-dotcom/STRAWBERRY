@@ -245,6 +245,196 @@ pub async fn add_habit(
     .await
 }
 
+// ------------------------------------------------------------- events & calendar ----
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarEvent {
+    pub id: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub start_at: String,
+    pub end_at: String,
+    pub timezone: String,
+    pub category: String,
+    pub source_url: Option<String>,
+    pub location: Option<String>,
+    pub is_all_day: bool,
+    pub certificate_offered: bool,
+    pub registration_required: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct EventReminder {
+    pub id: String,
+    pub event_id: String,
+    pub minutes_before: i64,
+    pub enabled: bool,
+    pub triggered: bool,
+}
+
+#[tauri::command]
+pub async fn list_calendar_events(
+    state: State<'_, Arc<AppState>>,
+    start_range: Option<String>,
+    end_range: Option<String>,
+) -> Cmd<Vec<CalendarEvent>> {
+    let st = state.inner().clone();
+    super::blocking(st, move |app| {
+        let conn = conn_of(app)?;
+        let query = match (start_range, end_range) {
+            (Some(s), Some(e)) => {
+                let mut stmt = conn.prepare(
+                    "SELECT id, title, description, start_at, end_at, timezone, category, source_url, location, is_all_day, certificate_offered, registration_required, created_at, updated_at
+                     FROM events WHERE end_at >= ?1 AND start_at <= ?2 ORDER BY start_at",
+                ).map_err(crate::error::to_string_err("prepare events range"))?;
+                let rows = stmt.query_map(rusqlite::params![s, e], |r| {
+                    Ok(CalendarEvent {
+                        id: r.get(0)?,
+                        title: r.get(1)?,
+                        description: r.get(2)?,
+                        start_at: r.get(3)?,
+                        end_at: r.get(4)?,
+                        timezone: r.get(5)?,
+                        category: r.get(6)?,
+                        source_url: r.get(7)?,
+                        location: r.get(8)?,
+                        is_all_day: r.get::<_, i64>(9)? != 0,
+                        certificate_offered: r.get::<_, i64>(10)? != 0,
+                        registration_required: r.get::<_, i64>(11)? != 0,
+                        created_at: r.get(12)?,
+                        updated_at: r.get(13)?,
+                    })
+                }).map_err(crate::error::to_string_err("map events"))?;
+                rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+            }
+            _ => {
+                let mut stmt = conn.prepare(
+                    "SELECT id, title, description, start_at, end_at, timezone, category, source_url, location, is_all_day, certificate_offered, registration_required, created_at, updated_at
+                     FROM events ORDER BY start_at",
+                ).map_err(crate::error::to_string_err("prepare events all"))?;
+                let rows = stmt.query_map([], |r| {
+                    Ok(CalendarEvent {
+                        id: r.get(0)?,
+                        title: r.get(1)?,
+                        description: r.get(2)?,
+                        start_at: r.get(3)?,
+                        end_at: r.get(4)?,
+                        timezone: r.get(5)?,
+                        category: r.get(6)?,
+                        source_url: r.get(7)?,
+                        location: r.get(8)?,
+                        is_all_day: r.get::<_, i64>(9)? != 0,
+                        certificate_offered: r.get::<_, i64>(10)? != 0,
+                        registration_required: r.get::<_, i64>(11)? != 0,
+                        created_at: r.get(12)?,
+                        updated_at: r.get(13)?,
+                    })
+                }).map_err(crate::error::to_string_err("map events"))?;
+                rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+            }
+        };
+        Ok(query)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn create_calendar_event(
+    state: State<'_, Arc<AppState>>,
+    title: String,
+    description: Option<String>,
+    start_at: String,
+    end_at: String,
+    timezone: Option<String>,
+    category: Option<String>,
+    source_url: Option<String>,
+    location: Option<String>,
+    is_all_day: Option<bool>,
+    certificate_offered: Option<bool>,
+    registration_required: Option<bool>,
+    reminder_minutes: Option<Vec<i64>>,
+) -> Cmd<CalendarEvent> {
+    let st = state.inner().clone();
+    super::blocking(st, move |app| {
+        let conn = conn_of(app)?;
+        let id = format!("event-{}", crate::db::now_iso().replace(['-', ':', 'T', 'Z'], ""));
+        let now = crate::db::now_iso();
+        let tz = timezone.unwrap_or_else(|| "UTC".into());
+        let cat = category.unwrap_or_else(|| "general".into());
+        let all_day = is_all_day.unwrap_or(false);
+        let cert = certificate_offered.unwrap_or(false);
+        let reg = registration_required.unwrap_or(false);
+        let desc = description.unwrap_or_default();
+
+        conn.execute(
+            "INSERT INTO events(id, title, description, start_at, end_at, timezone, category, source_url, location, is_all_day, certificate_offered, registration_required, created_at, updated_at)
+             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13)",
+            rusqlite::params![
+                id,
+                title.trim(),
+                desc,
+                start_at,
+                end_at,
+                tz,
+                cat,
+                source_url,
+                location,
+                if all_day { 1 } else { 0 },
+                if cert { 1 } else { 0 },
+                if reg { 1 } else { 0 },
+                now
+            ],
+        ).map_err(crate::error::to_string_err("insert calendar event"))?;
+
+        if let Some(reminders) = reminder_minutes {
+            for m in reminders {
+                let rem_id = format!("rem-{}-{}", id, m);
+                let _ = conn.execute(
+                    "INSERT INTO event_reminders(id, event_id, minutes_before, enabled, triggered) VALUES(?1, ?2, ?3, 1, 0)",
+                    rusqlite::params![rem_id, id, m],
+                );
+            }
+        }
+
+        Ok(CalendarEvent {
+            id,
+            title,
+            description: Some(desc),
+            start_at,
+            end_at,
+            timezone: tz,
+            category: cat,
+            source_url,
+            location,
+            is_all_day: all_day,
+            certificate_offered: cert,
+            registration_required: reg,
+            created_at: now.clone(),
+            updated_at: now,
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn delete_calendar_event(
+    state: State<'_, Arc<AppState>>,
+    id: String,
+) -> Cmd<()> {
+    let st = state.inner().clone();
+    super::blocking(st, move |app| {
+        let conn = conn_of(app)?;
+        conn.execute("DELETE FROM events WHERE id = ?1", [id])
+            .map_err(crate::error::to_string_err("delete calendar event"))?;
+        Ok(())
+    })
+    .await
+}
+
 // ------------------------------------------------------------- schedule ----
 
 #[tauri::command]

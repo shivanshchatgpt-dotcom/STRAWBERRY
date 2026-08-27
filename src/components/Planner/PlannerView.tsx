@@ -512,38 +512,36 @@ function FocusPanel() {
   );
 }
 
-/* ══════════════════════════ SCHEDULE ══════════════════════════ */
+/* ══════════════════════════ SCHEDULE & CALENDAR ══════════════════════════ */
 
 type SchedView = "day" | "48h" | "week" | "month";
 
-interface Occ {
-  ev: planner.ScheduleEvent;
-  date: Date;
-}
-
-function eventOccurrences(ev: planner.ScheduleEvent, days: Date[]): Occ[] {
-  const out: Occ[] = [];
-  const start = new Date(ev.startTime);
-  for (const d of days) {
-    if (ev.recurring === "daily") out.push({ ev, date: d });
-    else if (ev.recurring === "weekly") { if (d.getDay() === start.getDay()) out.push({ ev, date: d }); }
-    else if (ev.recurring === "monthly") { if (d.getDate() === start.getDate()) out.push({ ev, date: d }); }
-    else if (dstr(d) === dstr(start)) out.push({ ev, date: d });
-  }
-  return out;
-}
+const CATEGORY_COLORS: Record<string, string> = {
+  workshop: "#f43f5e",
+  hackathon: "#8b5cf6",
+  focus: "#38bdf8",
+  general: "#34d399",
+  exam: "#f59e0b",
+};
 
 function SchedulePanel() {
-  const [view, setView] = useState<SchedView>("48h");
-  const [events, setEvents] = useState<planner.ScheduleEvent[]>([]);
+  const [view, setView] = useState<SchedView>("week");
+  const [events, setEvents] = useState<import("../../lib/types").CalendarEvent[]>([]);
+  const [showModal, setShowModal] = useState(false);
   const [title, setTitle] = useState("");
-  const [when, setWhen] = useState("");
+  const [category, setCategory] = useState("workshop");
+  const [startAt, setStartAt] = useState("");
+  const [endAt, setEndAt] = useState("");
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [location, setLocation] = useState("");
+  const [certificate, setCertificate] = useState(false);
   const [selDay, setSelDay] = useState<string>(dstr(new Date()));
+
   const showToast = useAppStore((s) => s.showToast);
 
   const refresh = useCallback(async () => {
     try {
-      setEvents(await api.getSchedule());
+      setEvents(await api.listCalendarEvents());
     } catch (e) {
       showToast("error", typeof e === "string" ? e : String(e));
     }
@@ -554,15 +552,38 @@ function SchedulePanel() {
   }, [refresh]);
 
   const addEvent = async () => {
-    if (!title.trim() || !when) return;
-    const start = new Date(when);
-    const end = new Date(start.getTime() + 3600000);
+    if (!title.trim() || !startAt || !endAt) return;
     try {
-      await api.addEvent(title.trim(), start.toISOString(), end.toISOString());
+      await api.createCalendarEvent({
+        title: title.trim(),
+        category,
+        startAt: new Date(startAt).toISOString(),
+        endAt: new Date(endAt).toISOString(),
+        sourceUrl: sourceUrl.trim() || undefined,
+        location: location.trim() || undefined,
+        certificateOffered: certificate,
+        registrationRequired: !!sourceUrl.trim(),
+        reminderMinutes: [15, 60],
+      });
       setTitle("");
-      setWhen("");
+      setStartAt("");
+      setEndAt("");
+      setSourceUrl("");
+      setLocation("");
+      setCertificate(false);
+      setShowModal(false);
       await refresh();
-      showToast("success", "📅 Event added");
+      showToast("success", "📅 Event & local reminders created!");
+    } catch (e) {
+      showToast("error", typeof e === "string" ? e : String(e));
+    }
+  };
+
+  const deleteEv = async (id: string) => {
+    try {
+      await api.deleteCalendarEvent(id);
+      await refresh();
+      showToast("success", "Deleted event");
     } catch (e) {
       showToast("error", typeof e === "string" ? e : String(e));
     }
@@ -579,22 +600,17 @@ function SchedulePanel() {
     return Array.from({ length: n }, (_, i) => new Date(y, m, i + 1));
   }, [view]);
 
-  const occs = useMemo(() => {
-    const list = events.flatMap((ev) => eventOccurrences(ev, range));
-    return list.sort((a, b) => a.date.getTime() - b.date.getTime());
-  }, [events, range]);
-
   const byDay = useMemo(() => {
-    const map = new Map<string, Occ[]>();
-    for (const o of occs) {
-      const k = dstr(o.date);
-      (map.get(k) ?? map.set(k, []).get(k)!).push(o);
+    const map = new Map<string, import("../../lib/types").CalendarEvent[]>();
+    for (const ev of events) {
+      const k = ev.startAt.slice(0, 10);
+      (map.get(k) ?? map.set(k, []).get(k)!).push(ev);
     }
     return map;
-  }, [occs]);
+  }, [events]);
 
   const dayLabel = (d: Date) =>
-    dstr(d) === dstr(new Date()) ? "Aaj" : dstr(d) === dstr(addDays(new Date(), 1)) ? "Kal" :
+    dstr(d) === dstr(new Date()) ? "Today (Aaj)" : dstr(d) === dstr(addDays(new Date(), 1)) ? "Tomorrow (Kal)" :
       d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
 
   const now = new Date();
@@ -602,17 +618,48 @@ function SchedulePanel() {
 
   return (
     <div className="planner-body">
-      <nav className="nav-tabs">
-        {([["day", "Day"], ["48h", "Next 48 Hours"], ["week", "Week"], ["month", "Calendar"]] as [SchedView, string][]).map(([k, l]) => (
-          <button key={k} className={`nav-tab${view === k ? " active" : ""}`} onClick={() => setView(k)}>{l}</button>
-        ))}
-      </nav>
+      <div className="sched-toolbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <nav className="nav-tabs">
+          {([["day", "Day"], ["48h", "Next 48 Hours"], ["week", "Week"], ["month", "Month Calendar"]] as [SchedView, string][]).map(([k, l]) => (
+            <button key={k} className={`nav-tab${view === k ? " active" : ""}`} onClick={() => setView(k)}>{l}</button>
+          ))}
+        </nav>
+        <button className="btn primary" onClick={() => setShowModal(true)}>+ Schedule Event / Workshop</button>
+      </div>
 
-      <section className="panel pad quick-input">
-        <input placeholder="Event title…" value={title} onChange={(e) => setTitle(e.target.value)} />
-        <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
-        <button className="btn primary" onClick={() => void addEvent()} disabled={!title.trim() || !when}>+ Add Event</button>
-      </section>
+      {showModal && (
+        <div className="modal-backdrop" style={{ background: "rgba(0,0,0,0.6)", position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div className="panel pad modal-box" style={{ width: 440, background: "var(--bg-panel)", borderRadius: 12, border: "1px solid var(--border)" }}>
+            <h3 style={{ margin: "0 0 12px 0" }}>📅 Schedule Event & Reminder</h3>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <input placeholder="Workshop / Event Title" value={title} onChange={(e) => setTitle(e.target.value)} />
+              <div style={{ display: "flex", gap: 8 }}>
+                <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ flex: 1, padding: "8px", borderRadius: 6 }}>
+                  <option value="workshop">🎓 Workshop</option>
+                  <option value="hackathon">⚡ Hackathon</option>
+                  <option value="focus">⏱️ Focus Session</option>
+                  <option value="exam">📝 Exam / Deadline</option>
+                  <option value="general">📅 General</option>
+                </select>
+                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13, cursor: "pointer" }}>
+                  <input type="checkbox" checked={certificate} onChange={(e) => setCertificate(e.target.checked)} />
+                  🎓 Certificate
+                </label>
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} style={{ flex: 1 }} />
+                <input type="datetime-local" value={endAt} onChange={(e) => setEndAt(e.target.value)} style={{ flex: 1 }} />
+              </div>
+              <input placeholder="Registration URL (e.g. https://workshop.dev)" value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} />
+              <input placeholder="Location or Online Room" value={location} onChange={(e) => setLocation(e.target.value)} />
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+                <button className="btn" onClick={() => setShowModal(false)}>Cancel</button>
+                <button className="btn primary" onClick={() => void addEvent()} disabled={!title.trim() || !startAt || !endAt}>Save & Remind</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {view === "month" ? (
         <section className="panel pad">
@@ -623,7 +670,7 @@ function SchedulePanel() {
             {Array.from({ length: range.length }).map((_, i) => {
               const d = range[i];
               const ds = dstr(d);
-              const dayOccs = byDay.get(ds) ?? [];
+              const dayEvs = byDay.get(ds) ?? [];
               return (
                 <button
                   key={ds}
@@ -631,47 +678,68 @@ function SchedulePanel() {
                   onClick={() => setSelDay(ds)}
                 >
                   <b>{d.getDate()}</b>
-                  <span className="dots">{dayOccs.slice(0, 4).map((o, j) => <i key={j} style={{ background: o.ev.color ?? "#fb7185" }} />)}</span>
+                  <span className="dots">{dayEvs.slice(0, 4).map((ev, j) => <i key={j} style={{ background: CATEGORY_COLORS[ev.category] ?? "#34d399" }} />)}</span>
                 </button>
               );
             })}
           </div>
           {(byDay.get(selDay) ?? []).length > 0 && (
-            <div className="agenda">
-              <div className="section-label">{selDay}</div>
-              {(byDay.get(selDay) ?? []).map(({ ev, date }, i) => (
-                <AgendaRow key={i} ev={ev} at={date} />
+            <div className="agenda" style={{ marginTop: 16 }}>
+              <div className="section-label">{selDay} Events</div>
+              {(byDay.get(selDay) ?? []).map((ev) => (
+                <CalendarRow key={ev.id} ev={ev} onDelete={() => void deleteEv(ev.id)} />
               ))}
             </div>
           )}
         </section>
       ) : (
         <section className="panel pad agenda">
-          {view === "48h" && <div className="section-label">Next 48 Hours</div>}
-          {[...byDay.entries()].map(([ds, list]) => (
-            <div key={ds} className="day-block">
-              <h4 className="day-title">{dayLabel(list[0].date)}</h4>
-              {list.map(({ ev, date }, i) => <AgendaRow key={i} ev={ev} at={date} />)}
-            </div>
-          ))}
-          {byDay.size === 0 && <p className="text-dim">Is range me koi event nahi — upar se add karo.</p>}
+          {range.map((d) => {
+            const ds = dstr(d);
+            const list = byDay.get(ds) ?? [];
+            return (
+              <div key={ds} className="day-block" style={{ marginBottom: 16 }}>
+                <h4 className="day-title" style={{ borderBottom: "1px solid var(--border)", paddingBottom: 4 }}>{dayLabel(d)} ({ds})</h4>
+                {list.length === 0 ? (
+                  <p className="text-dim" style={{ fontSize: 13, margin: "6px 0" }}>No events scheduled.</p>
+                ) : (
+                  list.map((ev) => <CalendarRow key={ev.id} ev={ev} onDelete={() => void deleteEv(ev.id)} />)
+                )}
+              </div>
+            );
+          })}
         </section>
       )}
     </div>
   );
 }
 
-function AgendaRow({ ev, at }: { ev: planner.ScheduleEvent; at: Date }) {
-  const hh = at.getHours().toString().padStart(2, "0");
-  const mm = at.getMinutes().toString().padStart(2, "0");
+function CalendarRow({ ev, onDelete }: { ev: import("../../lib/types").CalendarEvent; onDelete: () => void }) {
+  const color = CATEGORY_COLORS[ev.category] ?? "#34d399";
+  const start = new Date(ev.startAt);
+  const timeStr = isNaN(start.getTime()) ? ev.startAt : start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
   return (
-    <div className="agenda-row">
-      <span className="agenda-dot" style={{ background: ev.color ?? "#fb7185" }} />
-      <div className="agenda-main">
-        <b>{ev.title}</b>
-        {ev.description && <small>{ev.description}</small>}
+    <div className="agenda-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "rgba(255,255,255,0.03)", borderRadius: 8, margin: "4px 0" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span className="agenda-dot" style={{ width: 10, height: 10, borderRadius: "50%", background: color }} />
+        <div>
+          <div style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+            {ev.title}
+            {ev.certificateOffered && <span style={{ fontSize: 11, background: "rgba(244,63,94,0.15)", color: "#f43f5e", padding: "2px 6px", borderRadius: 4 }}>🎓 Certificate</span>}
+            {ev.category && <span style={{ fontSize: 11, background: "rgba(255,255,255,0.08)", textTransform: "capitalize", padding: "2px 6px", borderRadius: 4 }}>{ev.category}</span>}
+          </div>
+          {ev.sourceUrl && (
+            <a href={ev.sourceUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "var(--accent)", textDecoration: "none" }}>
+              🔗 Review &amp; Register
+            </a>
+          )}
+        </div>
       </div>
-      <span className="mono dim">{ev.recurring !== "none" ? `${ev.recurring} · ` : ""}{hh}:{mm}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <span className="mono dim" style={{ fontSize: 13 }}>{timeStr}</span>
+        <button className="btn danger small" onClick={onDelete} style={{ padding: "2px 6px" }}>✕</button>
+      </div>
     </div>
   );
 }

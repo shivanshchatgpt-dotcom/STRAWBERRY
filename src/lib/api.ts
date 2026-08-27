@@ -200,6 +200,29 @@ export const api = {
 
   getDailyBriefing: () => call<planner.BriefingSection[]>("get_daily_briefing"),
 
+  // Calendar Events -----------------------------------------------------------
+  listCalendarEvents: (startRange?: string, endRange?: string) =>
+    call<import("./types").CalendarEvent[]>("list_calendar_events", {
+      startRange: startRange ?? null,
+      endRange: endRange ?? null,
+    }),
+  createCalendarEvent: (params: {
+    title: string;
+    description?: string;
+    startAt: string;
+    endAt: string;
+    timezone?: string;
+    category?: string;
+    sourceUrl?: string;
+    location?: string;
+    isAllDay?: boolean;
+    certificateOffered?: boolean;
+    registrationRequired?: boolean;
+    reminderMinutes?: number[];
+  }) => call<import("./types").CalendarEvent>("create_calendar_event", params),
+  deleteCalendarEvent: (id: string) =>
+    call<void>("delete_calendar_event", { id }),
+
   // Resume ----------------------------------------------------------------------
   getResumeSuggestions: (limit = 5) =>
     call<resume.ResumePoint[]>("get_resume_suggestions", { limit }),
