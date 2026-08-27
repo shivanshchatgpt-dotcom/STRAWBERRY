@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../lib/api";
 import type { planner, ws } from "../../lib/api";
 import { useAppStore } from "../../store/appStore";
+import { PreviousWorkPanel } from "./PreviousWorkPanel";
 
 /**
  * 🗓️ Planner — the anime-planner feature set merged into Strawberry.
@@ -10,7 +11,7 @@ import { useAppStore } from "../../store/appStore";
  * 48h / week / month calendar).
  */
 
-type Panel = "habits" | "focus" | "schedule" | "freeze";
+type Panel = "habits" | "focus" | "schedule" | "freeze" | "previous_work";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -73,6 +74,7 @@ export function PlannerView() {
               ["habits", "🔥 Habits"],
               ["focus", "⏱️ Focus"],
               ["schedule", "📅 Schedule"],
+              ["previous_work", "⏮️ Previous Work"],
               ["freeze", "🧊 Freeze"],
             ] as [Panel, string][]
           ).map(([key, label]) => (
@@ -90,6 +92,7 @@ export function PlannerView() {
       {panel === "habits" && <HabitsPanel />}
       {panel === "focus" && <FocusPanel />}
       {panel === "schedule" && <SchedulePanel />}
+      {panel === "previous_work" && <PreviousWorkPanel />}
       {panel === "freeze" && <FreezePanel />}
     </div>
   );

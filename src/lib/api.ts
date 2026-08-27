@@ -247,6 +247,24 @@ export const api = {
     call<ws.RestoreReport>("restore_work_space", { id }),
   deleteWorkSpace: (id: string) => call<void>("delete_work_space", { id }),
 
+  // Workspace Resume v0.1 IPC ----------------------------------------------------
+  captureWorkspaceSnapshot: () =>
+    call<import("./types").WorkspaceSession>("capture_workspace_snapshot"),
+  freezeWorkspace: () =>
+    call<import("./types").WorkspaceSession>("freeze_workspace"),
+  listWorkspaceSessions: (limit?: number) =>
+    call<import("./types").WorkspaceSession[]>("list_workspace_sessions", { limit: limit ?? null }),
+  getWorkspaceSession: (id: string) =>
+    call<import("./types").WorkspaceSession | null>("get_workspace_session", { id }),
+  resumeWorkspaceSession: (id: string) =>
+    call<import("./types").WorkspaceSession>("resume_workspace_session", { id }),
+  retryWorkspaceItem: (itemId: string) =>
+    call<import("./types").ActionResult>("retry_workspace_item", { itemId }),
+  deleteWorkspaceSession: (id: string) =>
+    call<void>("delete_workspace_session", { id }),
+  openWorkspaceItem: (itemId: string, confirmed?: boolean) =>
+    call<import("./types").ActionResult>("open_workspace_item", { itemId, confirmed: confirmed ?? false }),
+
   // Context Recall (work snapshots) ---------------------------------------------
   captureWorkSnapshot: () => call<snap.WorkSnapshot>("capture_work_snapshot"),
   getLatestWorkSnapshot: () =>

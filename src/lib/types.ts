@@ -325,3 +325,64 @@ export interface EventReminder {
   enabled: boolean;
   triggered: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// Workspace Resume v0.1
+// ---------------------------------------------------------------------------
+
+export type WorkspaceSessionStatus =
+  | "capturing"
+  | "frozen"
+  | "restoring"
+  | "restored"
+  | "partial"
+  | "failed";
+
+export type WorkspaceItemStatus =
+  | "pending"
+  | "launching"
+  | "restored"
+  | "skipped"
+  | "failed";
+
+export interface WorkspaceItem {
+  id: string;
+  sessionId: string;
+  itemType: string;
+  appName?: string | null;
+  processName?: string | null;
+  windowTitle?: string | null;
+  windowGeometry?: string | null;
+  workspace?: string | null;
+  cwd?: string | null;
+  command?: string | null;
+  browserUrl?: string | null;
+  browserTitle?: string | null;
+  restoreStrategy: string;
+  restoreStatus: WorkspaceItemStatus;
+  errorMessage?: string | null;
+  actionType?: string | null;
+  actionTarget?: string | null;
+  actionPayload?: string | null;
+  displayLabel?: string | null;
+  lastActionAt?: number | null;
+  createdAt: number;
+}
+
+export interface WorkspaceSession {
+  id: string;
+  name: string;
+  createdAt: number;
+  frozenAt?: number | null;
+  resumedAt?: number | null;
+  status: WorkspaceSessionStatus;
+  trigger: string;
+  metadataJson?: string | null;
+  items: WorkspaceItem[];
+}
+
+export interface ActionResult {
+  success: boolean;
+  itemId: string;
+  message: string;
+}

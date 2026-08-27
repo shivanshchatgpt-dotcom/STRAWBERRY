@@ -10,6 +10,8 @@
 //! put the windows back at their saved geometry. Dev servers are never
 //! auto-executed; they come back as a pending checklist.
 
+pub mod v1;
+
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::process::Command;
