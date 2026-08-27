@@ -249,3 +249,50 @@ export interface ScreenBlocklist {
   pattern: string;
   reason?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Ambient Memory & Symbolic Graph
+// ---------------------------------------------------------------------------
+
+export interface AmbientEvent {
+  id: string;
+  eventType: string;
+  title: string;
+  summary: string;
+  sourceApp?: string | null;
+  metadata?: string | null;
+  createdAt: string;
+}
+
+export interface AmbientStats {
+  totalEvents: number;
+  clipEvents: number;
+  screenEvents: number;
+  astEvents: number;
+  platform: string;
+}
+
+export interface SymbolItem {
+  kind: "Function" | "ClassOrStruct" | "InterfaceOrTrait" | "Import" | "ErrorOrThrow";
+  name: string;
+  signature: string;
+  line: number;
+}
+
+export interface SymbolicAnalysis {
+  language: string;
+  totalLines: number;
+  imports: string[];
+  functions: SymbolItem[];
+  typesOrClasses: SymbolItem[];
+  errorPoints: SymbolItem[];
+}
+
+export interface DeterministicReport {
+  timestamp: string;
+  platform: string;
+  totalEventsAnalyzed: number;
+  activeLanguages: string[];
+  extractedSymbols: number;
+  summaryMarkdown: string;
+}

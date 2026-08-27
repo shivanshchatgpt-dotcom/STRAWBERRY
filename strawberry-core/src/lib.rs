@@ -10,11 +10,13 @@
 //! - [`handoff`] renders the AI-to-AI packet: eight priority slots filled
 //!   greedily against a token budget.
 
+pub mod ast;
 pub mod brief;
 pub mod extractor;
 pub mod handoff;
 pub mod rules;
 
+pub use ast::{analyze_source, SymbolKind, SymbolItem, SymbolicAnalysis};
 pub use brief::{generate, GeneratedBrief, Stats};
 pub use extractor::{extract, CodeBlock, Extraction, Identifier, RejectedOption};
 pub use handoff::{

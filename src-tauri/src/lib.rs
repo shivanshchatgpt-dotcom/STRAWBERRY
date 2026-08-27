@@ -94,6 +94,11 @@ pub fn run() {
             commands::snapshot::capture_work_snapshot,
             commands::snapshot::get_latest_work_snapshot,
             commands::snapshot::list_work_snapshots,
+            commands::ambient::record_ambient_event,
+            commands::ambient::get_ambient_events,
+            commands::ambient::analyze_code_ast,
+            commands::ambient::get_ambient_stats,
+            commands::ambient::generate_deterministic_report,
             commands::get_app_info,
         ])
         .run(tauri::generate_context!())

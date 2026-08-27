@@ -1,3 +1,4 @@
+pub mod ambient;
 pub mod chats;
 pub mod folders;
 pub mod health;

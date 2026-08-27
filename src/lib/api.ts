@@ -230,6 +230,35 @@ export const api = {
     call<snap.WorkSnapshot | null>("get_latest_work_snapshot"),
   listWorkSnapshots: (limit = 10) =>
     call<[string, string, string | null][]>("list_work_snapshots", { limit }),
+
+  // Ambient Memory & AST IPC
+  recordAmbientEvent: (
+    eventType: string,
+    title: string,
+    summary: string,
+    sourceApp?: string,
+    metadata?: string,
+  ) =>
+    invoke<import("./types").AmbientEvent>("record_ambient_event", {
+      eventType,
+      title,
+      summary,
+      sourceApp,
+      metadata,
+    }),
+  getAmbientEvents: (limit?: number) =>
+    invoke<import("./types").AmbientEvent[]>("get_ambient_events", { limit }),
+  analyzeCodeAst: (langOrExt: string, source: string) =>
+    invoke<import("./types").SymbolicAnalysis>("analyze_code_ast", {
+      langOrExt,
+      source,
+    }),
+  getAmbientStats: () =>
+    invoke<import("./types").AmbientStats>("get_ambient_stats"),
+  generateDeterministicReport: () =>
+    invoke<import("./types").DeterministicReport>(
+      "generate_deterministic_report",
+    ),
 };
 
 export namespace health {
