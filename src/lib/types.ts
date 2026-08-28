@@ -249,3 +249,140 @@ export interface ScreenBlocklist {
   pattern: string;
   reason?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Ambient Memory & Symbolic Graph
+// ---------------------------------------------------------------------------
+
+export interface AmbientEvent {
+  id: string;
+  eventType: string;
+  title: string;
+  summary: string;
+  sourceApp?: string | null;
+  metadata?: string | null;
+  createdAt: string;
+}
+
+export interface AmbientStats {
+  totalEvents: number;
+  clipEvents: number;
+  screenEvents: number;
+  astEvents: number;
+  platform: string;
+}
+
+export interface SymbolItem {
+  kind: "Function" | "ClassOrStruct" | "InterfaceOrTrait" | "Import" | "ErrorOrThrow";
+  name: string;
+  signature: string;
+  line: number;
+}
+
+export interface SymbolicAnalysis {
+  language: string;
+  totalLines: number;
+  imports: string[];
+  functions: SymbolItem[];
+  typesOrClasses: SymbolItem[];
+  errorPoints: SymbolItem[];
+}
+
+export interface DeterministicReport {
+  timestamp: string;
+  platform: string;
+  totalEventsAnalyzed: number;
+  activeLanguages: string[];
+  extractedSymbols: number;
+  summaryMarkdown: string;
+}
+
+// ---------------------------------------------------------------------------
+// Calendar & Workshop Events
+// ---------------------------------------------------------------------------
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  description?: string | null;
+  startAt: string;
+  endAt: string;
+  timezone: string;
+  category: string;
+  sourceUrl?: string | null;
+  location?: string | null;
+  isAllDay: boolean;
+  certificateOffered: boolean;
+  registrationRequired: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EventReminder {
+  id: string;
+  eventId: string;
+  minutesBefore: number;
+  enabled: boolean;
+  triggered: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Workspace Resume v0.1
+// ---------------------------------------------------------------------------
+
+export type WorkspaceSessionStatus =
+  | "capturing"
+  | "frozen"
+  | "restoring"
+  | "restored"
+  | "partial"
+  | "failed";
+
+export type WorkspaceItemStatus =
+  | "pending"
+  | "launching"
+  | "restored"
+  | "skipped"
+  | "failed";
+
+export interface WorkspaceItem {
+  id: string;
+  sessionId: string;
+  itemType: string;
+  appName?: string | null;
+  processName?: string | null;
+  windowTitle?: string | null;
+  windowGeometry?: string | null;
+  workspace?: string | null;
+  cwd?: string | null;
+  command?: string | null;
+  browserUrl?: string | null;
+  browserTitle?: string | null;
+  restoreStrategy: string;
+  restoreStatus: WorkspaceItemStatus;
+  errorMessage?: string | null;
+  actionType?: string | null;
+  actionTarget?: string | null;
+  actionPayload?: string | null;
+  displayLabel?: string | null;
+  lastActionAt?: number | null;
+  createdAt: number;
+}
+
+export interface WorkspaceSession {
+  id: string;
+  name: string;
+  createdAt: number;
+  frozenAt?: number | null;
+  resumedAt?: number | null;
+  status: WorkspaceSessionStatus;
+  trigger: string;
+  metadataJson?: string | null;
+  items: WorkspaceItem[];
+}
+
+export interface ActionResult {
+  success: boolean;
+  itemId: string;
+  message: string;
+}

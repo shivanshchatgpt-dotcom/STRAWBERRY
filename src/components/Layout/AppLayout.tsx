@@ -6,9 +6,10 @@ import { DashboardView } from "../Dashboard/DashboardView";
 import { ScreensView } from "../Screens/ScreensView";
 import { InboxView } from "../Inbox/InboxView";
 import { PlannerView } from "../Planner/PlannerView";
+import { AmbientMemoryView } from "../AmbientMemory/AmbientMemoryView";
 import strawberryIcon from "../../assets/strawberry-icon.png";
 
-type View = "dashboard" | "tree" | "screens" | "inbox" | "planner";
+type View = "dashboard" | "tree" | "screens" | "inbox" | "planner" | "ambient";
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const openDialog = useAppStore((s) => s.openDialog);
@@ -41,6 +42,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const goPlanner = () => {
     clearSearch();
     setView("planner");
+  };
+  const goAmbient = () => {
+    clearSearch();
+    setView("ambient");
   };
 
   // Keyboard: Ctrl/Cmd+1 dashboard, Ctrl/Cmd+2 tree, Ctrl/Cmd+3 screens.
@@ -117,6 +122,13 @@ export function AppLayout({ children }: { children: ReactNode }) {
           >
             🗓️ Planner
           </button>
+          <button
+            className={`nav-tab${view === "ambient" ? " active" : ""}`}
+            onClick={goAmbient}
+            title="Ambient Memory"
+          >
+            🧠 Ambient Memory
+          </button>
         </nav>
 
         <SearchBox />
@@ -154,6 +166,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
           <InboxView />
         ) : view === "planner" ? (
           <PlannerView />
+        ) : view === "ambient" ? (
+          <AmbientMemoryView />
         ) : showDashboard ? (
           <DashboardView />
         ) : (

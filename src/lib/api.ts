@@ -200,6 +200,29 @@ export const api = {
 
   getDailyBriefing: () => call<planner.BriefingSection[]>("get_daily_briefing"),
 
+  // Calendar Events -----------------------------------------------------------
+  listCalendarEvents: (startRange?: string, endRange?: string) =>
+    call<import("./types").CalendarEvent[]>("list_calendar_events", {
+      startRange: startRange ?? null,
+      endRange: endRange ?? null,
+    }),
+  createCalendarEvent: (params: {
+    title: string;
+    description?: string;
+    startAt: string;
+    endAt: string;
+    timezone?: string;
+    category?: string;
+    sourceUrl?: string;
+    location?: string;
+    isAllDay?: boolean;
+    certificateOffered?: boolean;
+    registrationRequired?: boolean;
+    reminderMinutes?: number[];
+  }) => call<import("./types").CalendarEvent>("create_calendar_event", params),
+  deleteCalendarEvent: (id: string) =>
+    call<void>("delete_calendar_event", { id }),
+
   // Resume ----------------------------------------------------------------------
   getResumeSuggestions: (limit = 5) =>
     call<resume.ResumePoint[]>("get_resume_suggestions", { limit }),
@@ -224,12 +247,59 @@ export const api = {
     call<ws.RestoreReport>("restore_work_space", { id }),
   deleteWorkSpace: (id: string) => call<void>("delete_work_space", { id }),
 
+  // Workspace Resume v0.1 IPC ----------------------------------------------------
+  captureWorkspaceSnapshot: () =>
+    call<import("./types").WorkspaceSession>("capture_workspace_snapshot"),
+  freezeWorkspace: () =>
+    call<import("./types").WorkspaceSession>("freeze_workspace"),
+  listWorkspaceSessions: (limit?: number) =>
+    call<import("./types").WorkspaceSession[]>("list_workspace_sessions", { limit: limit ?? null }),
+  getWorkspaceSession: (id: string) =>
+    call<import("./types").WorkspaceSession | null>("get_workspace_session", { id }),
+  resumeWorkspaceSession: (id: string) =>
+    call<import("./types").WorkspaceSession>("resume_workspace_session", { id }),
+  retryWorkspaceItem: (itemId: string) =>
+    call<import("./types").ActionResult>("retry_workspace_item", { itemId }),
+  deleteWorkspaceSession: (id: string) =>
+    call<void>("delete_workspace_session", { id }),
+  openWorkspaceItem: (itemId: string, confirmed?: boolean) =>
+    call<import("./types").ActionResult>("open_workspace_item", { itemId, confirmed: confirmed ?? false }),
+
   // Context Recall (work snapshots) ---------------------------------------------
   captureWorkSnapshot: () => call<snap.WorkSnapshot>("capture_work_snapshot"),
   getLatestWorkSnapshot: () =>
     call<snap.WorkSnapshot | null>("get_latest_work_snapshot"),
   listWorkSnapshots: (limit = 10) =>
     call<[string, string, string | null][]>("list_work_snapshots", { limit }),
+
+  // Ambient Memory & AST IPC
+  recordAmbientEvent: (
+    eventType: string,
+    title: string,
+    summary: string,
+    sourceApp?: string,
+    metadata?: string,
+  ) =>
+    invoke<import("./types").AmbientEvent>("record_ambient_event", {
+      eventType,
+      title,
+      summary,
+      sourceApp,
+      metadata,
+    }),
+  getAmbientEvents: (limit?: number) =>
+    invoke<import("./types").AmbientEvent[]>("get_ambient_events", { limit }),
+  analyzeCodeAst: (langOrExt: string, source: string) =>
+    invoke<import("./types").SymbolicAnalysis>("analyze_code_ast", {
+      langOrExt,
+      source,
+    }),
+  getAmbientStats: () =>
+    invoke<import("./types").AmbientStats>("get_ambient_stats"),
+  generateDeterministicReport: () =>
+    invoke<import("./types").DeterministicReport>(
+      "generate_deterministic_report",
+    ),
 };
 
 export namespace health {
@@ -261,6 +331,8 @@ export namespace inbox {
     code: number;
     error: number;
     url: number;
+    image?: number;
+    diagram?: number;
   }
 }
 

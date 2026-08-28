@@ -1,10 +1,6 @@
 //! 🍓 Clipboard read/write across Wayland, X11 and native OS backends.
 //!
-//! The daemon previously only ever *read* the clipboard. Handoff has to write
-//! back to it, and writing needs care on Wayland: there is no clipboard
-//! "store", only a live data-source served by a running process. A background
-//! `copy()` spawns a serving thread inside this process, so the compressed
-//! packet stays pasteable exactly as long as the daemon lives.
+//! Supports both text and image reading cross-platform (Wayland, macOS, Linux X11, Windows).
 
 use std::io::Read;
 
@@ -13,6 +9,14 @@ use std::io::Read;
 pub enum Backend {
     Wayland,
     Native,
+}
+
+#[derive(Debug, Clone)]
+pub struct ClipboardImage {
+    pub width: u32,
+    pub height: u32,
+    pub rgba_bytes: Vec<u8>,
+    pub png_bytes: Option<Vec<u8>>,
 }
 
 pub fn detect() -> Backend {
@@ -35,8 +39,7 @@ impl Backend {
     }
 }
 
-/// Read the clipboard as UTF-8 text. `None` when empty, non-text or
-/// unavailable — all three are normal, not errors worth logging.
+/// Read the clipboard as UTF-8 text.
 pub fn read(backend: Backend) -> Option<String> {
     match backend {
         Backend::Wayland => {
@@ -55,30 +58,142 @@ pub fn read(backend: Backend) -> Option<String> {
     }
 }
 
+pub fn compute_bytes_sig(width: u32, height: u32, bytes: &[u8]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    width.hash(&mut hasher);
+    height.hash(&mut hasher);
+    bytes.len().hash(&mut hasher);
+    if !bytes.is_empty() {
+        let step = (bytes.len() / 64).max(1);
+        for i in (0..bytes.len()).step_by(step) {
+            bytes[i].hash(&mut hasher);
+        }
+    }
+    hasher.finish()
+}
+
+/// Fast check if image clipboard changed, returning image and signature without re-allocating when unchanged.
+pub fn read_image_if_changed(backend: Backend, last_sig: u64) -> Option<(ClipboardImage, u64)> {
+    match backend {
+        Backend::Wayland => {
+            use wl_clipboard_rs::paste::{get_contents, ClipboardType, MimeType, Seat};
+            if let Ok((mut pipe, _mime)) = get_contents(
+                ClipboardType::Regular,
+                Seat::Unspecified,
+                MimeType::Specific("image/png"),
+            ) {
+                let mut buf = Vec::new();
+                if pipe.read_to_end(&mut buf).is_ok() && !buf.is_empty() {
+                    let sig = compute_bytes_sig(0, 0, &buf);
+                    if sig == last_sig {
+                        return None;
+                    }
+                    if let Ok(dynamic_img) = image::load_from_memory(&buf) {
+                        let rgba = dynamic_img.to_rgba8();
+                        let (width, height) = rgba.dimensions();
+                        return Some((
+                            ClipboardImage {
+                                width,
+                                height,
+                                rgba_bytes: rgba.into_raw(),
+                                png_bytes: Some(buf),
+                            },
+                            sig,
+                        ));
+                    }
+                }
+            }
+            None
+        }
+        Backend::Native => {
+            if let Ok(mut cb) = arboard::Clipboard::new() {
+                if let Ok(img) = cb.get_image() {
+                    let w = img.width as u32;
+                    let h = img.height as u32;
+                    let sig = compute_bytes_sig(w, h, &img.bytes);
+                    if sig == last_sig {
+                        return None;
+                    }
+                    return Some((
+                        ClipboardImage {
+                            width: w,
+                            height: h,
+                            rgba_bytes: img.bytes.into_owned(),
+                            png_bytes: None,
+                        },
+                        sig,
+                    ));
+                }
+            }
+            None
+        }
+    }
+}
+
+/// Read image from clipboard across all OS platforms (Wayland, macOS, Linux X11, Windows).
+#[allow(dead_code)]
+pub fn read_image(backend: Backend) -> Option<ClipboardImage> {
+    read_image_if_changed(backend, 0).map(|(img, _)| img)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compute_bytes_sig_stability() {
+        let buf = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        let sig1 = compute_bytes_sig(0, 0, &buf);
+        let sig2 = compute_bytes_sig(0, 0, &buf);
+        assert_eq!(sig1, sig2);
+
+        let sig_dim = compute_bytes_sig(100, 200, &buf);
+        let sig_dim2 = compute_bytes_sig(100, 200, &buf);
+        assert_eq!(sig_dim, sig_dim2);
+        assert_ne!(sig1, sig_dim);
+    }
+
+    #[test]
+    fn test_wayland_png_decoding_simulated() {
+        // Create an in-memory 15x25 PNG image buffer
+        let mut png_bytes: Vec<u8> = Vec::new();
+        let img = image::RgbaImage::new(15, 25);
+        let mut cursor = std::io::Cursor::new(&mut png_bytes);
+        img.write_to(&mut cursor, image::ImageFormat::Png).unwrap();
+
+        let sig = compute_bytes_sig(0, 0, &png_bytes);
+        // Load dynamically from memory like Wayland path
+        let dynamic_img = image::load_from_memory(&png_bytes).unwrap();
+        let rgba = dynamic_img.to_rgba8();
+        let (width, height) = rgba.dimensions();
+
+        assert_eq!(width, 15);
+        assert_eq!(height, 25);
+        assert_eq!(rgba.as_raw().len(), 15 * 25 * 4);
+
+        let decoded_img = ClipboardImage {
+            width,
+            height,
+            rgba_bytes: rgba.into_raw(),
+            png_bytes: Some(png_bytes.clone()),
+        };
+        assert_eq!(decoded_img.width, 15);
+        assert_eq!(decoded_img.height, 25);
+
+        // Verification of signature equality to prevent polling loop
+        assert_eq!(sig, compute_bytes_sig(0, 0, &png_bytes));
+    }
+}
+
 /// How long the written selection must stay available.
-///
-/// This distinction only matters on Wayland, where the clipboard has no store:
-/// the selection is served live by a process, and when that process exits the
-/// selection reverts to whatever owned it before. A long-running daemon can
-/// serve from a background thread, but a one-shot CLI has to stay in the
-/// foreground or its packet vanishes before the user can paste.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Persist {
-    /// Return immediately; the calling process stays alive to serve pastes.
     WhileRunning,
-    /// Block, serving unlimited pastes, until another app takes the selection.
-    ///
-    /// Same contract as `wl-copy` in foreground mode. Serving only a single
-    /// request is not sufficient: clipboard managers and some compositors
-    /// request the data as soon as it is offered, which would consume the one
-    /// serve before the user ever pressed paste.
     BlockUntilReplaced,
 }
 
 /// Replace the clipboard contents with `text`.
-///
-/// With [`Persist::BlockUntilReplaced`] this blocks on Wayland, so print any
-/// user-facing report *before* calling it.
 pub fn write(backend: Backend, text: &str, persist: Persist) -> Result<(), String> {
     match backend {
         Backend::Wayland => {
@@ -87,7 +202,6 @@ pub fn write(backend: Backend, text: &str, persist: Persist) -> Result<(), Strin
             };
             let mut opts = Options::new();
             opts.clipboard(ClipboardType::Regular);
-            // Never trim: the packet's trailing newline is part of its shape.
             opts.trim_newline(false);
             opts.serve_requests(ServeRequests::Unlimited);
             opts.foreground(persist == Persist::BlockUntilReplaced);
@@ -97,8 +211,6 @@ pub fn write(backend: Backend, text: &str, persist: Persist) -> Result<(), Strin
             )
             .map_err(|e| format!("wayland copy failed: {e}"))
         }
-        // X11/macOS/Windows keep a real clipboard owner, so both modes are the
-        // same call; arboard's own thread outlives this function.
         Backend::Native => arboard::Clipboard::new()
             .map_err(|e| format!("clipboard unavailable: {e}"))?
             .set_text(text.to_string())
