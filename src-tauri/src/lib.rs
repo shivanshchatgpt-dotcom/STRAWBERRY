@@ -1,19 +1,25 @@
+mod alpha;
+mod autonomous;
 mod brief;
 mod commands;
 mod db;
 mod error;
+mod ghost;
 mod resume;
 mod screen;
 mod snapshot;
 mod state;
 mod tabs;
 mod storage;
+mod wellness;
 mod workspace;
 
 use std::sync::Arc;
 
 use state::AppState;
 use tauri::Manager;
+use wellness::WellnessAgent;
+use autonomous::AutonomyRuntime;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -25,6 +31,41 @@ pub fn run() {
             })?;
             app.manage(Arc::new(st));
             app.manage(screen::capture::CaptureHandle::default());
+
+            let agent = WellnessAgent::new(app.handle().clone());
+            app.manage(agent.clone());
+            WellnessAgent::start(agent);
+
+            // 🤖 Spawn the Autonomous Runtime — observe → world state → (later: goal/plan/exec).
+            // Phase 1 only observes and updates world state. The runtime is started
+            // in Paused mode by default; the user can enable it via a Tauri command.
+            let autonomy = AutonomyRuntime::new();
+            let autonomy_for_thread = autonomy.clone();
+            app.manage(autonomy);
+            std::thread::spawn(move || {
+                loop {
+                    if autonomy_for_thread.mode() == autonomous::runtime::RuntimeMode::Running {
+                        let _ = autonomy_for_thread.run_cycle(32);
+                        let sleep = autonomy_for_thread.suggested_cycle_interval();
+                        std::thread::sleep(sleep);
+                    } else {
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                    }
+                }
+            });
+
+            // 👻 Spawn the Ghost: every 5 minutes, rebuild graph + regenerate insights.
+            let ghost_state = app.state::<Arc<AppState>>().inner().clone();
+            std::thread::spawn(move || {
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(300));
+                    if let Ok(conn) = ghost_state.conn.lock() {
+                        let _ = ghost::graph::rebuild(&conn);
+                        let _ = ghost::insights::regenerate(&conn);
+                    }
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -76,6 +117,14 @@ pub fn run() {
             commands::resume::get_day_summary,
             commands::story::export_my_story,
             commands::health::health_report,
+            commands::health::ping,
+            commands::alpha::scan_alpha,
+            commands::alpha::list_alpha_candidates,
+            commands::alpha::verify_alpha_candidate,
+            commands::alpha::dismiss_alpha_candidate,
+            commands::alpha::get_alpha_config,
+            commands::alpha::get_alpha_enabled,
+            commands::alpha::set_alpha_enabled,
             commands::inbox::get_inbox_items,
             commands::inbox::get_inbox_counts,
             commands::inbox::delete_inbox_item,
@@ -105,6 +154,26 @@ pub fn run() {
             commands::snapshot::capture_work_snapshot,
             commands::snapshot::get_latest_work_snapshot,
             commands::snapshot::list_work_snapshots,
+            commands::wellness::wellness_get_state,
+            commands::wellness::wellness_set_enabled,
+            commands::wellness::wellness_snooze,
+            commands::wellness::wellness_get_config,
+            commands::wellness::wellness_set_category,
+            commands::wellness::wellness_record_activity,
+            commands::wellness::wellness_dismiss,
+            commands::ghost::ghost_record_event,
+            commands::ghost::ghost_rebuild_graph,
+            commands::ghost::ghost_regenerate_insights,
+            commands::ghost::ghost_get_snapshot,
+            commands::ghost::ghost_mark_seen,
+            commands::ghost::ghost_purge,
+            commands::autonomy::autonomy_get_state,
+            commands::autonomy::autonomy_start,
+            commands::autonomy::autonomy_pause,
+            commands::autonomy::autonomy_resume,
+            commands::autonomy::autonomy_shutdown,
+            commands::autonomy::autonomy_run_cycle,
+            commands::autonomy::autonomy_publish,
             commands::ambient::record_ambient_event,
             commands::ambient::get_ambient_events,
             commands::ambient::analyze_code_ast,

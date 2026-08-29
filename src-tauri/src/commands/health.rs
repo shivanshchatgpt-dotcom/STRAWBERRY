@@ -175,3 +175,19 @@ fn gb(bytes: u64) -> f64 {
 fn _gb_used() -> f64 {
     gb(0)
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PingReply {
+    pub message: String,
+    pub timestamp_ms: i64,
+}
+
+/// IPC health-check — cheap round-trip, no database, no blocking work.
+#[tauri::command]
+pub async fn ping() -> Cmd<PingReply> {
+    Ok(PingReply {
+        message: "pong".to_string(),
+        timestamp_ms: chrono::Utc::now().timestamp_millis(),
+    })
+}

@@ -11,6 +11,9 @@ const MIGRATION_V8: &str = include_str!("../../migrations/008_freeze_resume.sql"
 const MIGRATION_V9: &str = include_str!("../../migrations/009_ambient_memory.sql");
 const MIGRATION_V10: &str = include_str!("../../migrations/010_events_calendar.sql");
 const MIGRATION_V11: &str = include_str!("../../migrations/011_workspace_resume_v1.sql");
+const MIGRATION_V12: &str = include_str!("../../migrations/012_alpha_hunter.sql");
+const MIGRATION_V13: &str = include_str!("../../migrations/013_wellness.sql");
+const MIGRATION_V14: &str = include_str!("../../migrations/014_ghost.sql");
 
 /// Apply pending schema migrations, tracked in `schema_migrations`.
 pub fn run(conn: &mut Connection) -> Result<(), String> {
@@ -166,6 +169,64 @@ pub fn run(conn: &mut Connection) -> Result<(), String> {
         )
         .map_err(crate::error::to_string_err(
             "migration 011 failed to record",
+        ))?;
+    }
+
+    if !applied.contains(&12) {
+        tx.execute_batch(MIGRATION_V12)
+            .map_err(crate::error::to_string_err("migration 012 failed"))?;
+        tx.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (12, ?1)",
+            [crate::db::now_iso()],
+        )
+        .map_err(crate::error::to_string_err(
+            "migration 012 failed to record",
+        ))?;
+    }
+
+    if !applied.contains(&13) {
+        tx.execute_batch(MIGRATION_V13)
+            .map_err(crate::error::to_string_err("migration 013 failed"))?;
+        tx.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (13, ?1)",
+            [crate::db::now_iso()],
+        )
+        .map_err(crate::error::to_string_err(
+            "migration 013 failed to record",
+        ))?;
+    }
+
+    if !applied.contains(&14) {
+        tx.execute_batch(MIGRATION_V14)
+            .map_err(crate::error::to_string_err("migration 014 failed"))?;
+        tx.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (14, ?1)",
+            [crate::db::now_iso()],
+        )
+        .map_err(crate::error::to_string_err(
+            "migration 014 failed to record",
+        ))?;
+    }
+
+        tx.execute_batch(MIGRATION_V13)
+            .map_err(crate::error::to_string_err("migration 013 failed"))?;
+        tx.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (13, ?1)",
+            [crate::db::now_iso()],
+        )
+        .map_err(crate::error::to_string_err(
+            "migration 013 failed to record",
+        ))?;
+    }
+
+        tx.execute_batch(MIGRATION_V14)
+            .map_err(crate::error::to_string_err("migration 014 failed"))?;
+        tx.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (14, ?1)",
+            [crate::db::now_iso()],
+        )
+        .map_err(crate::error::to_string_err(
+            "migration 014 failed to record",
         ))?;
     }
 
@@ -368,6 +429,6 @@ mod tests {
         let versions: i64 = conn
             .query_row("SELECT count(*) FROM schema_migrations", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(versions, 11);
+        assert_eq!(versions, 14);
     }
 }

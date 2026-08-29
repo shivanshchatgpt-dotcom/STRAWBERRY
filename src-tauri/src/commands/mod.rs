@@ -1,6 +1,9 @@
+pub mod alpha;
 pub mod ambient;
+pub mod autonomy;
 pub mod chats;
 pub mod folders;
+pub mod ghost;
 pub mod health;
 pub mod handoff;
 pub mod inbox;
@@ -13,6 +16,7 @@ pub mod search;
 pub mod snapshot;
 pub mod story;
 pub mod tabs;
+pub mod wellness;
 pub mod workspace;
 
 use std::sync::Arc;
