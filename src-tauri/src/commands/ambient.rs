@@ -46,8 +46,7 @@ pub fn record_ambient_event(
     source_app: Option<String>,
     metadata: Option<String>,
 ) -> Result<AmbientEvent, String> {
-    let pool = state.pool.clone();
-    let conn = pool.get().map_err(crate::error::to_string_err("db connection failed"))?;
+    let conn = state.conn.lock().map_err(|_| crate::error::ERR_DB_LOCK.to_string())?;
 
     let id = format!("amb_{}", uuid::Uuid::new_v4().simple());
     let now = crate::db::now_iso();
@@ -75,8 +74,7 @@ pub fn get_ambient_events(
     state: State<'_, std::sync::Arc<AppState>>,
     limit: Option<usize>,
 ) -> Result<Vec<AmbientEvent>, String> {
-    let pool = state.pool.clone();
-    let conn = pool.get().map_err(crate::error::to_string_err("db connection failed"))?;
+    let conn = state.conn.lock().map_err(|_| crate::error::ERR_DB_LOCK.to_string())?;
     let limit_num = limit.unwrap_or(50) as i64;
 
     let mut stmt = conn
@@ -113,14 +111,37 @@ pub fn get_ambient_events(
 pub fn analyze_code_ast(
     lang_or_ext: String,
     source: String,
-) -> Result<SymbolicAnalysis, String> {
-    Ok(analyze_source(&lang_or_ext, &source))
+) -> Result<serde_json::Value, String> {
+    let a = analyze_source(&lang_or_ext, &source);
+    let kind_str = |k: &strawberry_core::SymbolKind| -> &'static str {
+        use strawberry_core::SymbolKind::*;
+        match k {
+            Function => "function",
+            ClassOrStruct => "class_or_struct",
+            InterfaceOrTrait => "interface_or_trait",
+            Import => "import",
+            ErrorOrThrow => "error_or_throw",
+        }
+    };
+    let sym_to_json = |s: &strawberry_core::SymbolItem| serde_json::json!({
+        "kind": kind_str(&s.kind),
+        "name": s.name,
+        "signature": s.signature,
+        "line": s.line,
+    });
+    Ok(serde_json::json!({
+        "language": a.language,
+        "total_lines": a.total_lines,
+        "imports": a.imports,
+        "functions": a.functions.iter().map(sym_to_json).collect::<Vec<_>>(),
+        "types_or_classes": a.types_or_classes.iter().map(sym_to_json).collect::<Vec<_>>(),
+        "error_points": a.error_points.iter().map(sym_to_json).collect::<Vec<_>>(),
+    }))
 }
 
 #[tauri::command]
 pub fn get_ambient_stats(state: State<'_, std::sync::Arc<AppState>>) -> Result<AmbientStats, String> {
-    let pool = state.pool.clone();
-    let conn = pool.get().map_err(crate::error::to_string_err("db connection failed"))?;
+    let conn = state.conn.lock().map_err(|_| crate::error::ERR_DB_LOCK.to_string())?;
 
     let total: i64 = conn
         .query_row("SELECT COUNT(*) FROM ambient_events", [], |r| r.get(0))

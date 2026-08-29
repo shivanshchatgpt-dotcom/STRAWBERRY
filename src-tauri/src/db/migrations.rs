@@ -208,28 +208,6 @@ pub fn run(conn: &mut Connection) -> Result<(), String> {
         ))?;
     }
 
-        tx.execute_batch(MIGRATION_V13)
-            .map_err(crate::error::to_string_err("migration 013 failed"))?;
-        tx.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (13, ?1)",
-            [crate::db::now_iso()],
-        )
-        .map_err(crate::error::to_string_err(
-            "migration 013 failed to record",
-        ))?;
-    }
-
-        tx.execute_batch(MIGRATION_V14)
-            .map_err(crate::error::to_string_err("migration 014 failed"))?;
-        tx.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (14, ?1)",
-            [crate::db::now_iso()],
-        )
-        .map_err(crate::error::to_string_err(
-            "migration 014 failed to record",
-        ))?;
-    }
-
     tx.commit()
         .map_err(crate::error::to_string_err("failed to commit migrations"))
 }

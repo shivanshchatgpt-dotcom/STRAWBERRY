@@ -510,7 +510,7 @@ pub async fn open_workspace_item(
         let mut action: WorkspaceAction = serde_json::from_str(&payload)
             .map_err(|e| format!("Failed to parse stored action payload: {e}"))?;
 
-        if let WorkspaceAction::RunTerminalCommand { ref mut confirmed: conf, .. } = action {
+        if let WorkspaceAction::RunTerminalCommand { confirmed: ref mut conf, .. } = action {
             *conf = confirmed.unwrap_or(false);
         }
 
