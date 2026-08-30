@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { ResumeBanner } from "./ResumeBanner";
 import { ContextRecall } from "./ContextRecall";
+import { WellnessCard } from "./WellnessCard";
+import { AlphaHunter } from "./AlphaHunter";
 import { api } from "../../lib/api";
 import type { planner, health } from "../../lib/api";
 import { useAppStore } from "../../store/appStore";
@@ -131,6 +133,12 @@ export function DashboardView() {
       <ResumeBanner />
 
       <ContextRecall />
+
+      {/* ------------------------- New feature cards ---------------------- */}
+      <section className="feature-grid" aria-label="New tools">
+        <WellnessCard />
+        <AlphaHunter />
+      </section>
 
       {/* ------------------------- Briefing cards ------------------------- */}
       <section className="brief-grid" aria-label="Daily briefing">

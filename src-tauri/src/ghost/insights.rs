@@ -5,6 +5,34 @@ use std::collections::{HashMap, HashSet};
 use crate::ghost::GhostInsight;
 use crate::db::now_iso;
 
+/// Build a JSON array of tag strings from a comma-separated value.
+/// Empty / whitespace tokens are dropped. Embedded double-quotes and
+/// backslashes are escaped to keep the result valid JSON.
+fn build_tags_json_array(csv: &str) -> String {
+    let mut out = String::from('[');
+    let mut first = true;
+    for raw in csv.split(',') {
+        let t = raw.trim();
+        if t.is_empty() { continue; }
+        if !first { out.push(','); }
+        first = false;
+        out.push('"');
+        for ch in t.chars() {
+            match ch {
+                '"' => { out.push('\\'); out.push('"'); }
+                '\\' => { out.push('\\'); out.push('\\'); }
+                '\n' => { out.push('\\'); out.push('n'); }
+                '\r' => { out.push('\\'); out.push('r'); }
+                '\t' => { out.push('\\'); out.push('t'); }
+                c => out.push(c),
+            }
+        }
+        out.push('"');
+    }
+    out.push(']');
+    out
+}
+
 /// Generate fresh insights based on current data. Wipes old unseen insights.
 pub fn regenerate(conn: &Connection) -> Result<Vec<GhostInsight>, String> {
     // Wipe old (seen=0) insights.
@@ -74,22 +102,30 @@ fn serendipity_old_chats_with_shared_tags(
             let t = tag.trim();
             if t.is_empty() { continue; }
 
-            // Old chat
+            // Build a single, valid JSON array of all tags from this row so
+            // `json_each` actually expands each tag.
+            let json_tags = build_tags_json_array(&tags_csv);
+
+            // Old chat.
             let old: Option<(String, String, String)> = conn.query_row(
                 "SELECT ch.id, ch.title, ch.created_at FROM chats ch
-                 WHERE ?1 IN (SELECT value FROM json_each('[' || REPLACE(ch.tags, ',', ',') || ']'))
+                 WHERE EXISTS (
+                   SELECT 1 FROM json_each(?1) je WHERE je.value = ?2
+                 )
                  AND ch.created_at < datetime('now', '-14 days')
                  ORDER BY ch.created_at DESC LIMIT 1",
-                [t],
+                rusqlite::params![&json_tags, t],
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             ).ok();
-            // Recent chat
+            // Recent chat.
             let recent: Option<(String, String, String)> = conn.query_row(
                 "SELECT ch.id, ch.title, ch.created_at FROM chats ch
-                 WHERE ?1 IN (SELECT value FROM json_each('[' || REPLACE(ch.tags, ',', ',') || ']'))
+                 WHERE EXISTS (
+                   SELECT 1 FROM json_each(?1) je WHERE je.value = ?2
+                 )
                  AND ch.created_at >= datetime('now', '-14 days')
                  ORDER BY ch.created_at DESC LIMIT 1",
-                [t],
+                rusqlite::params![&json_tags, t],
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             ).ok();
 

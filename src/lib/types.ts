@@ -386,3 +386,8 @@ export interface ActionResult {
   itemId: string;
   message: string;
 }
+
+// Re-export namespaces from api.ts so legacy imports
+// `import type { autonomy } from "../lib/types"` keep working.
+export type { autonomy, alpha, ghost, wellness } from "./api";
+

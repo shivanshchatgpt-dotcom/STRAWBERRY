@@ -86,31 +86,54 @@ impl Default for WellnessState {
 
 pub struct WellnessAgent {
     app: AppHandle,
-    state: Arc<Mutex<WellnessState>>,
+    state: Mutex<WellnessState>,
+    /// Shutdown signal for the background thread.
+    shutdown: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl WellnessAgent {
+    /// Build a new agent. The returned `Arc<Mutex<Self>>` is the canonical
+    /// handle — pass it to `start()` and to `app.manage()`.
     pub fn new(app: AppHandle) -> Arc<Mutex<Self>> {
         Arc::new(Mutex::new(Self {
             app,
-            state: Arc::new(Mutex::new(WellnessState::default())),
+            state: Mutex::new(WellnessState::default()),
+            shutdown: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }))
     }
 
+    /// Spawn the background tick loop. Exits when `signal_shutdown()` is called.
     pub fn start(agent: Arc<Mutex<Self>>) {
+        let shutdown = {
+            let s = agent.lock().unwrap();
+            s.shutdown.clone()
+        };
         std::thread::spawn(move || {
-            loop {
+            while !shutdown.load(std::sync::atomic::Ordering::Relaxed) {
                 Self::tick(&agent);
-                std::thread::sleep(Duration::from_secs(60));
+                // Sleep in small steps so shutdown is responsive.
+                for _ in 0..60 {
+                    if shutdown.load(std::sync::atomic::Ordering::Relaxed) {
+                        return;
+                    }
+                    std::thread::sleep(Duration::from_secs(1));
+                }
             }
         });
     }
 
+    /// Signal the background thread to exit. Idempotent.
+    pub fn signal_shutdown(agent: &Arc<Mutex<Self>>) {
+        if let Ok(s) = agent.lock() {
+            s.shutdown.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
     fn tick(agent: &Arc<Mutex<Self>>) {
-        let state = {
+        // Snapshot state under the lock, then release.
+        let (app, state) = {
             let s = agent.lock().unwrap();
-            let x = s.state.lock().unwrap().clone(); 
-            x
+            (s.app.clone(), s.state.lock().unwrap().clone())
         };
         if !state.enabled {
             return;
@@ -122,31 +145,28 @@ impl WellnessAgent {
             }
         }
 
-        let app = {
-            let s = agent.lock().unwrap();
-            s.app.clone()
+        // Do all DB I/O WITHOUT holding the agent lock to avoid deadlocking
+        // concurrent command handlers (set_enabled, snooze, dismiss).
+        let conn = match Self::open_db_for(&app) {
+            Ok(c) => c,
+            Err(_) => return,
         };
-        let agent = agent.clone();
-
-        tauri::async_runtime::spawn_blocking(move || {
-            let guard = agent.lock().unwrap();
-            if let Ok(conn) = guard.db_conn(&app) {
-                if let Some(reminder) = guard.next_due(&conn) {
-                    let _ = app.emit("wellness:notify", reminder.clone());
-                    let _ = app.emit("wellness:popup", reminder);
-                }
-            }
-        });
+        if let Some(reminder) = Self::next_due_static(&conn) {
+            // Single emit — `wellness:popup` carries the payload the popup
+            // window listens for. `wellness:notify` is kept for any
+            // future global handler.
+            let _ = app.emit("wellness:popup", reminder);
+        }
     }
 
-    fn db_conn(&self, app: &AppHandle) -> Result<rusqlite::Connection, String> {
+    fn open_db_for(app: &AppHandle) -> Result<rusqlite::Connection, String> {
         let state = app.state::<Arc<crate::state::AppState>>();
         let st = state.inner();
         let path = st.db_path();
         rusqlite::Connection::open(&path).map_err(|e| e.to_string())
     }
 
-    fn next_due(&self, conn: &rusqlite::Connection) -> Option<WellnessReminder> {
+    fn next_due_static(conn: &rusqlite::Connection) -> Option<WellnessReminder> {
         let categories: Vec<WellnessCategory> = vec![
             WellnessCategory::Blink,
             WellnessCategory::Water,
@@ -159,7 +179,7 @@ impl WellnessAgent {
         let mut eligible: Vec<(WellnessCategory, i64, Option<String>)> = Vec::new();
 
         for cat in &categories {
-            let (enabled, interval, last) = self.load_category(conn, cat);
+            let (enabled, interval, last) = Self::load_category_static(conn, cat);
             if !enabled {
                 continue;
             }
@@ -184,8 +204,11 @@ impl WellnessAgent {
             return None;
         }
 
+        // Round-robin-ish: pick the eligible category whose `last_reminded_at`
+        // is oldest (or never). Falls back to position 0 if all are equal.
+        eligible.sort_by_key(|(_, _, last)| last.clone().unwrap_or_default());
         let (cat, _, _) = &eligible[0];
-        self.mark_reminded(conn, cat);
+        Self::mark_reminded_static(conn, cat);
 
         Some(match cat {
             WellnessCategory::Blink => WellnessReminder {
@@ -246,7 +269,7 @@ impl WellnessAgent {
         })
     }
 
-    fn load_category(&self, conn: &rusqlite::Connection, cat: &WellnessCategory) -> (bool, i64, Option<String>) {
+    fn load_category_static(conn: &rusqlite::Connection, cat: &WellnessCategory) -> (bool, i64, Option<String>) {
         let cat_str = cat.to_string();
         let mut stmt = conn.prepare_cached(
             "SELECT enabled, interval_minutes, last_reminded_at FROM wellness_config WHERE category = ?1"
@@ -272,33 +295,73 @@ impl WellnessAgent {
         (true, interval, None)
     }
 
-    fn mark_reminded(&self, conn: &rusqlite::Connection, cat: &WellnessCategory) {
+    fn mark_reminded_static(conn: &rusqlite::Connection, cat: &WellnessCategory) {
         let now = Utc::now().to_rfc3339();
         let cat_str = cat.to_string();
+        // Preserve any existing interval_minutes for the category.
         let _ = conn.execute(
-            "INSERT INTO wellness_config(category, enabled, interval_minutes, last_reminded_at) VALUES(?1, 1, (SELECT interval_minutes FROM wellness_config WHERE category = ?1), ?2)
+            "INSERT INTO wellness_config(category, enabled, interval_minutes, last_reminded_at)
+             VALUES(?1, 1, ?2, ?3)
              ON CONFLICT(category) DO UPDATE SET last_reminded_at = excluded.last_reminded_at",
-            [&cat_str, &now],
+            rusqlite::params![
+                &cat_str,
+                Self::default_interval_minutes(cat),
+                &now,
+            ],
         );
     }
 
-    pub fn get_state(&self, _app: &AppHandle) -> Cmd<WellnessState> {
-        Ok(self.state.lock().unwrap().clone())
+    fn default_interval_minutes(cat: &WellnessCategory) -> i64 {
+        match cat {
+            WellnessCategory::Blink => 10,
+            WellnessCategory::Water => 45,
+            WellnessCategory::Stretch => 30,
+            WellnessCategory::Posture => 60,
+            WellnessCategory::Eyes => 20,
+            WellnessCategory::Meal => 180,
+        }
     }
 
-    pub fn set_enabled(&self, _app: &AppHandle, enabled: bool) -> Cmd<()> {
-        self.state.lock().unwrap().enabled = enabled;
+    pub fn get_state(agent: &Arc<Mutex<Self>>) -> WellnessState {
+        let s = agent.lock().unwrap();
+        s.state.lock().unwrap().clone()
+    }
+
+    pub fn set_enabled(agent: &Arc<Mutex<Self>>, app: &AppHandle, enabled: bool) -> Cmd<()> {
+        {
+            let s = agent.lock().unwrap();
+            s.state.lock().unwrap().enabled = enabled;
+        }
+        // Persist the global flag to DB so it survives restart.
+        if let Ok(conn) = Self::open_db_for(app) {
+            let v = if enabled { "1" } else { "0" };
+            let _ = conn.execute(
+                "INSERT INTO wellness_state(key, value) VALUES('enabled', ?1)
+                 ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                [v],
+            );
+        }
         Ok(())
     }
 
-    pub fn snooze(&self, _app: &AppHandle, minutes: i64) -> Cmd<()> {
-        let until = Utc::now() + chrono::Duration::minutes(minutes);
-        self.state.lock().unwrap().snoozed_until = Some(until.to_rfc3339());
+    pub fn snooze(agent: &Arc<Mutex<Self>>, app: &AppHandle, minutes: i64) -> Cmd<()> {
+        let until_rfc = (Utc::now() + chrono::Duration::minutes(minutes)).to_rfc3339();
+        {
+            let s = agent.lock().unwrap();
+            s.state.lock().unwrap().snoozed_until = Some(until_rfc.clone());
+        }
+        if let Ok(conn) = Self::open_db_for(app) {
+            let _ = conn.execute(
+                "INSERT INTO wellness_state(key, value) VALUES('snoozed_until', ?1)
+                 ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                [&until_rfc],
+            );
+        }
         Ok(())
     }
 
-    pub fn get_config(&self, app: &AppHandle) -> Cmd<Vec<WellnessConfig>> {
-        let conn = self.db_conn(app)?;
+    pub fn get_config(app: &AppHandle) -> Cmd<Vec<WellnessConfig>> {
+        let conn = Self::open_db_for(app)?;
         let mut stmt = conn.prepare("SELECT category, enabled, interval_minutes, last_reminded_at FROM wellness_config").map_err(|e| e.to_string())?;
         let rows = stmt.query_map([], |r| {
             Ok(WellnessConfig {
@@ -316,8 +379,8 @@ impl WellnessAgent {
         Ok(out)
     }
 
-    pub fn set_category(&self, app: &AppHandle, category: String, enabled: bool, interval_minutes: i64) -> Cmd<()> {
-        let conn = self.db_conn(app)?;
+    pub fn set_category(app: &AppHandle, category: String, enabled: bool, interval_minutes: i64) -> Cmd<()> {
+        let conn = Self::open_db_for(app)?;
         let enabled_val: String = if enabled { "1".into() } else { "0".into() };
         let interval_str: String = interval_minutes.to_string();
         conn.execute(
@@ -328,8 +391,8 @@ impl WellnessAgent {
         Ok(())
     }
 
-    pub fn record_activity(&self, app: &AppHandle, source: &str) -> Cmd<()> {
-        let conn = self.db_conn(app)?;
+    pub fn record_activity(app: &AppHandle, source: &str) -> Cmd<()> {
+        let conn = Self::open_db_for(app)?;
         let _ = conn.execute(
             "INSERT INTO wellness_activity(ts, source) VALUES(?1, ?2)",
             [&Utc::now().to_rfc3339(), &source.to_string()],
@@ -337,9 +400,54 @@ impl WellnessAgent {
         Ok(())
     }
 
-    pub fn dismiss(&self) {
-        let mut state = self.state.lock().unwrap();
-        state.last_category = None;
-        state.snoozed_until = None;
+    pub fn dismiss(agent: &Arc<Mutex<Self>>, app: &AppHandle) {
+        {
+            let s = agent.lock().unwrap();
+            let mut state = s.state.lock().unwrap();
+            state.last_category = None;
+            state.snoozed_until = None;
+            // Reset the visible countdown so the next tick isn't an immediate
+            // re-reminder.
+            state.next_reminder_in_secs = 600;
+        }
+        if let Ok(conn) = Self::open_db_for(app) {
+            let _ = conn.execute(
+                "DELETE FROM wellness_state WHERE key = 'snoozed_until'",
+                [],
+            );
+        }
+    }
+
+    /// Hydrate `state` from the `wellness_state` table. Called once at startup.
+    pub fn load_state_from_db(agent: &Arc<Mutex<Self>>, app: &AppHandle) {
+        let conn = match Self::open_db_for(app) {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        let enabled_v: Option<String> = conn
+            .query_row(
+                "SELECT value FROM wellness_state WHERE key='enabled'",
+                [],
+                |r| r.get(0),
+            )
+            .ok();
+        let snoozed_v: Option<String> = conn
+            .query_row(
+                "SELECT value FROM wellness_state WHERE key='snoozed_until'",
+                [],
+                |r| r.get(0),
+            )
+            .ok();
+        let s = agent.lock().unwrap();
+        let mut state = s.state.lock().unwrap();
+        if let Some(v) = enabled_v {
+            state.enabled = v == "1";
+        }
+        if let Some(v) = snoozed_v {
+            // Drop stale snoozes from previous sessions.
+            if v > Utc::now().to_rfc3339() {
+                state.snoozed_until = Some(v);
+            }
+        }
     }
 }

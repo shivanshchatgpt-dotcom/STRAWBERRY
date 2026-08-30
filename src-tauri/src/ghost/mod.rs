@@ -150,3 +150,23 @@ pub struct GhostSnapshot {
     pub heatmap: Vec<AttentionCell>,
     pub recent_events: Vec<GhostEvent>,
 }
+
+/// Run a full ghost cycle (rebuild graph + regenerate insights) on a
+/// **dedicated** connection. This avoids holding the `AppState` connection
+/// lock for the duration of the rebuild, which would freeze the app every
+/// 5 minutes.
+pub fn run_cycle_offline(
+    db_path: &std::path::Path,
+    shutdown: &std::sync::atomic::AtomicBool,
+) -> Result<(), String> {
+    let conn = rusqlite::Connection::open(db_path).map_err(|e| e.to_string())?;
+    // Reasonable busy timeout for writes that may briefly conflict.
+    conn.busy_timeout(std::time::Duration::from_secs(2)).ok();
+    graph::rebuild(&conn)?;
+    // Check shutdown between the two heavy operations.
+    if shutdown.load(std::sync::atomic::Ordering::Relaxed) {
+        return Ok(());
+    }
+    insights::regenerate(&conn)?;
+    Ok(())
+}

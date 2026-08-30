@@ -1,4 +1,5 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import type React from "react";
 import { useAppStore } from "./store/appStore";
 import { AppLayout } from "./components/Layout/AppLayout";
 import { HomeView } from "./components/Home/HomeView";
@@ -70,4 +71,18 @@ export default function App() {
       <ToastHost />
     </AppLayout>
   );
+}
+
+/**
+ * Rendered inside the popup window (route: #/wellness-popup).
+ * It must NOT mount the main app — that would call loadRoots, init
+ * dialogs, etc. and crash in a context-less window.
+ */
+export function PopupApp() {
+  // Lazy import keeps the wellness popup code out of the main bundle.
+  const [Comp, setComp] = useState<React.ComponentType | null>(null);
+  useEffect(() => {
+    import("./components/WellnessPopup").then((m) => setComp(() => m.default));
+  }, []);
+  return <>{Comp ? <Comp /> : null}</>;
 }

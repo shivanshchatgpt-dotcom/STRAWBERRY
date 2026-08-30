@@ -11,3 +11,11 @@ CREATE TABLE IF NOT EXISTS wellness_activity (
     ts TEXT NOT NULL,
     source TEXT NOT NULL
 );
+
+-- Persist global wellness state (enabled flag, snooze) so it survives
+-- app restarts. The Rust side reads this on startup and writes to it
+-- whenever the user toggles/snoozes.
+CREATE TABLE IF NOT EXISTS wellness_state (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);

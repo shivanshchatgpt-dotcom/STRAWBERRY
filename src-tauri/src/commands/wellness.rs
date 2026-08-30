@@ -32,8 +32,8 @@ pub struct SetCategoryArgs {
 }
 
 #[tauri::command]
-pub async fn wellness_get_state(agent: State<'_, Arc<WellnessAgent>>, app: AppHandle) -> Cmd<WellnessStateDto> {
-    let state = agent.get_state(&app)?;
+pub async fn wellness_get_state(agent: State<'_, Arc<WellnessAgent>>) -> Cmd<WellnessStateDto> {
+    let state = WellnessAgent::get_state(agent.inner());
     Ok(WellnessStateDto {
         enabled: state.enabled,
         next_reminder_in_secs: state.next_reminder_in_secs,
@@ -44,17 +44,17 @@ pub async fn wellness_get_state(agent: State<'_, Arc<WellnessAgent>>, app: AppHa
 
 #[tauri::command]
 pub async fn wellness_set_enabled(agent: State<'_, Arc<WellnessAgent>>, app: AppHandle, enabled: bool) -> Cmd<()> {
-    agent.set_enabled(&app, enabled)
+    WellnessAgent::set_enabled(agent.inner(), &app, enabled)
 }
 
 #[tauri::command]
 pub async fn wellness_snooze(agent: State<'_, Arc<WellnessAgent>>, app: AppHandle, minutes: i64) -> Cmd<()> {
-    agent.snooze(&app, minutes)
+    WellnessAgent::snooze(agent.inner(), &app, minutes)
 }
 
 #[tauri::command]
-pub async fn wellness_get_config(agent: State<'_, Arc<WellnessAgent>>, app: AppHandle) -> Cmd<Vec<WellnessConfigDto>> {
-    let configs = agent.get_config(&app)?;
+pub async fn wellness_get_config(_agent: State<'_, Arc<WellnessAgent>>, app: AppHandle) -> Cmd<Vec<WellnessConfigDto>> {
+    let configs = WellnessAgent::get_config(&app)?;
     Ok(configs.into_iter().map(|c| WellnessConfigDto {
         category: c.category,
         enabled: c.enabled,
@@ -64,17 +64,17 @@ pub async fn wellness_get_config(agent: State<'_, Arc<WellnessAgent>>, app: AppH
 }
 
 #[tauri::command]
-pub async fn wellness_set_category(agent: State<'_, Arc<WellnessAgent>>, app: AppHandle, args: SetCategoryArgs) -> Cmd<()> {
-    agent.set_category(&app, args.category, args.enabled, args.interval_minutes)
+pub async fn wellness_set_category(_agent: State<'_, Arc<WellnessAgent>>, app: AppHandle, args: SetCategoryArgs) -> Cmd<()> {
+    WellnessAgent::set_category(&app, args.category, args.enabled, args.interval_minutes)
 }
 
 #[tauri::command]
-pub async fn wellness_record_activity(agent: State<'_, Arc<WellnessAgent>>, app: AppHandle, source: String) -> Cmd<()> {
-    agent.record_activity(&app, &source)
+pub async fn wellness_record_activity(_agent: State<'_, Arc<WellnessAgent>>, app: AppHandle, source: String) -> Cmd<()> {
+    WellnessAgent::record_activity(&app, &source)
 }
 
 #[tauri::command]
-pub async fn wellness_dismiss(agent: State<'_, Arc<WellnessAgent>>) -> Cmd<()> {
-    agent.dismiss();
+pub async fn wellness_dismiss(agent: State<'_, Arc<WellnessAgent>>, app: AppHandle) -> Cmd<()> {
+    WellnessAgent::dismiss(agent.inner(), &app);
     Ok(())
 }

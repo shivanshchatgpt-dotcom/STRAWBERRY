@@ -14,12 +14,19 @@ mod storage;
 mod wellness;
 mod workspace;
 
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
+use autonomous::AutonomyRuntime;
 use state::AppState;
 use tauri::Manager;
 use wellness::WellnessAgent;
-use autonomous::AutonomyRuntime;
+
+/// Holds the two shutdown flags the background threads watch.
+struct ShutdownFlags {
+    autonomy: Arc<AtomicBool>,
+    ghost: Arc<AtomicBool>,
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -32,7 +39,10 @@ pub fn run() {
             app.manage(Arc::new(st));
             app.manage(screen::capture::CaptureHandle::default());
 
+            // Wellness agent: shared, mutex-protected, with shutdown signal.
             let agent = WellnessAgent::new(app.handle().clone());
+            // Hydrate persisted global state (enabled / snoozed_until) before start.
+            WellnessAgent::load_state_from_db(&agent, &app.handle());
             app.manage(agent.clone());
             WellnessAgent::start(agent);
 
@@ -41,13 +51,24 @@ pub fn run() {
             // in Paused mode by default; the user can enable it via a Tauri command.
             let autonomy = AutonomyRuntime::new();
             let autonomy_for_thread = autonomy.clone();
+            let autonomy_shutdown = Arc::new(AtomicBool::new(false));
             app.manage(autonomy);
+            let autonomy_shutdown_thread = autonomy_shutdown.clone();
             std::thread::spawn(move || {
-                loop {
+                while !autonomy_shutdown_thread.load(std::sync::atomic::Ordering::Relaxed) {
                     if autonomy_for_thread.mode() == autonomous::runtime::RuntimeMode::Running {
                         let _ = autonomy_for_thread.run_cycle(32);
                         let sleep = autonomy_for_thread.suggested_cycle_interval();
-                        std::thread::sleep(sleep);
+                        // Sleep in small steps so shutdown is responsive.
+                        let mut slept = std::time::Duration::ZERO;
+                        let step = std::time::Duration::from_millis(200);
+                        while slept < sleep
+                            && !autonomy_shutdown_thread
+                                .load(std::sync::atomic::Ordering::Relaxed)
+                        {
+                            std::thread::sleep(step);
+                            slept += step;
+                        }
                     } else {
                         std::thread::sleep(std::time::Duration::from_millis(500));
                     }
@@ -55,15 +76,30 @@ pub fn run() {
             });
 
             // 👻 Spawn the Ghost: every 5 minutes, rebuild graph + regenerate insights.
+            // Uses its own SQLite connection to avoid blocking the AppState lock
+            // (which would freeze every other command for the duration of the rebuild).
             let ghost_state = app.state::<Arc<AppState>>().inner().clone();
+            let ghost_shutdown = Arc::new(AtomicBool::new(false));
+            let ghost_db_path = ghost_state.db_path();
+            let ghost_shutdown_thread = ghost_shutdown.clone();
             std::thread::spawn(move || {
-                loop {
-                    std::thread::sleep(std::time::Duration::from_secs(300));
-                    if let Ok(conn) = ghost_state.conn.lock() {
-                        let _ = ghost::graph::rebuild(&conn);
-                        let _ = ghost::insights::regenerate(&conn);
+                while !ghost_shutdown_thread.load(std::sync::atomic::Ordering::Relaxed) {
+                    // Sleep 5 minutes in 1-second steps so shutdown is responsive.
+                    for _ in 0..300 {
+                        if ghost_shutdown_thread.load(std::sync::atomic::Ordering::Relaxed) {
+                            return;
+                        }
+                        std::thread::sleep(std::time::Duration::from_secs(1));
                     }
+                    let _ = ghost::run_cycle_offline(&ghost_db_path, &ghost_shutdown_thread);
                 }
+            });
+
+            // Stash both shutdown flags in managed state so they can be
+            // flipped on app exit.
+            app.manage(ShutdownFlags {
+                autonomy: autonomy_shutdown,
+                ghost: ghost_shutdown,
             });
 
             Ok(())

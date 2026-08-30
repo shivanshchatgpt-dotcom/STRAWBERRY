@@ -7,9 +7,11 @@ import { ScreensView } from "../Screens/ScreensView";
 import { InboxView } from "../Inbox/InboxView";
 import { PlannerView } from "../Planner/PlannerView";
 import { AmbientMemoryView } from "../AmbientMemory/AmbientMemoryView";
+import { GhostPanel } from "../Ghost/GhostPanel";
+import { AutonomyPanel } from "../Autonomy/AutonomyPanel";
 import strawberryIcon from "../../assets/strawberry-icon.png";
 
-type View = "dashboard" | "tree" | "screens" | "inbox" | "planner" | "ambient";
+type View = "dashboard" | "tree" | "screens" | "inbox" | "planner" | "ambient" | "ghost" | "autonomy";
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const openDialog = useAppStore((s) => s.openDialog);
@@ -46,6 +48,14 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const goAmbient = () => {
     clearSearch();
     setView("ambient");
+  };
+  const goGhost = () => {
+    clearSearch();
+    setView("ghost");
+  };
+  const goAutonomy = () => {
+    clearSearch();
+    setView("autonomy");
   };
 
   // Keyboard: Ctrl/Cmd+1 dashboard, Ctrl/Cmd+2 tree, Ctrl/Cmd+3 screens.
@@ -129,6 +139,20 @@ export function AppLayout({ children }: { children: ReactNode }) {
           >
             🧠 Ambient Memory
           </button>
+          <button
+            className={`nav-tab${view === "ghost" ? " active" : ""}`}
+            onClick={goGhost}
+            title="The Ghost — knowledge graph & insights"
+          >
+            👻 Ghost
+          </button>
+          <button
+            className={`nav-tab${view === "autonomy" ? " active" : ""}`}
+            onClick={goAutonomy}
+            title="Autonomy Runtime"
+          >
+            🤖 Autonomy
+          </button>
         </nav>
 
         <SearchBox />
@@ -168,6 +192,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
           <PlannerView />
         ) : view === "ambient" ? (
           <AmbientMemoryView />
+        ) : view === "ghost" ? (
+          <GhostPanel />
+        ) : view === "autonomy" ? (
+          <AutonomyPanel />
         ) : showDashboard ? (
           <DashboardView />
         ) : (

@@ -300,7 +300,240 @@ export const api = {
     invoke<import("./types").DeterministicReport>(
       "generate_deterministic_report",
     ),
+
+  // Wellness --------------------------------------------------------------------
+  wellnessGetState: () => call<wellness.WellnessState>("wellness_get_state"),
+  wellnessSetEnabled: (enabled: boolean) =>
+    call<void>("wellness_set_enabled", { enabled }),
+  wellnessSnooze: (minutes: number) =>
+    call<void>("wellness_snooze", { minutes }),
+  wellnessGetConfig: () => call<wellness.WellnessConfig[]>("wellness_get_config"),
+  wellnessSetCategory: (
+    category: string,
+    enabled: boolean,
+    intervalMinutes: number,
+  ) =>
+    call<void>("wellness_set_category", {
+      category,
+      enabled,
+      intervalMinutes,
+    }),
+  wellnessRecordActivity: (source: string) =>
+    call<void>("wellness_record_activity", { source }),
+  wellnessDismiss: () => call<void>("wellness_dismiss"),
+
+  // Alpha Hunter ---------------------------------------------------------------
+  scanAlpha: () => call<alpha.ScanReport>("scan_alpha"),
+  listAlphaCandidates: () => call<alpha.AlphaCandidate[]>("list_alpha_candidates"),
+  verifyAlphaCandidate: (id: string, apiKey: string) =>
+    call<alpha.AlphaCandidate>("verify_alpha_candidate", { id, apiKey }),
+  dismissAlphaCandidate: (id: string) =>
+    call<void>("dismiss_alpha_candidate", { id }),
+  getAlphaConfig: (id: string) => call<string>("get_alpha_config", { id }),
+  getAlphaEnabled: () => call<boolean>("get_alpha_enabled"),
+  setAlphaEnabled: (enabled: boolean) =>
+    call<boolean>("set_alpha_enabled", { enabled }),
+
+  // Ghost ----------------------------------------------------------------------
+  ghostRecordEvent: (
+    eventType: string,
+    sourceId: string,
+    sourceKind: string,
+    durationMs: number,
+    metadata?: string | null,
+  ) =>
+    call<void>("ghost_record_event", {
+      eventType,
+      sourceId,
+      sourceKind,
+      durationMs,
+      metadata: metadata ?? null,
+    }),
+  ghostRebuildGraph: () => call<void>("ghost_rebuild_graph"),
+  ghostRegenerateInsights: () => call<void>("ghost_regenerate_insights"),
+  ghostGetSnapshot: () => call<ghost.GhostSnapshot>("ghost_get_snapshot"),
+  ghostMarkSeen: (insightId: number) =>
+    call<void>("ghost_mark_seen", { insightId }),
+  ghostPurge: () => call<void>("ghost_purge"),
+
+  // Autonomy -------------------------------------------------------------------
+  autonomyGetState: () => call<autonomy.RuntimeSnapshot>("autonomy_get_state"),
+  autonomyStart: () => call<void>("autonomy_start"),
+  autonomyPause: () => call<void>("autonomy_pause"),
+  autonomyResume: () => call<void>("autonomy_resume"),
+  autonomyShutdown: () => call<void>("autonomy_shutdown"),
+  autonomyRunCycle: (batchSize: number) =>
+    call<void>("autonomy_run_cycle", { batchSize }),
+  autonomyPublish: (kind: string, data: Record<string, unknown>) =>
+    call<void>("autonomy_publish", { kind, data }),
 };
+
+export namespace wellness {
+  export interface WellnessState {
+    enabled: boolean;
+    nextReminderInSecs: number;
+    lastCategory: string | null;
+    snoozedUntil: string | null;
+  }
+  export interface WellnessConfig {
+    category: string;
+    enabled: boolean;
+    intervalMinutes: number;
+    lastRemindedAt: string | null;
+  }
+}
+
+export namespace alpha {
+  export interface AlphaCandidate {
+    id: string;
+    source: string;
+    title: string;
+    url: string | null;
+    provider: string | null;
+    modelId: string | null;
+    baseUrl: string | null;
+    status: string;
+    score: number;
+    detectedAt: string;
+    verifiedAt: string | null;
+    notes: string | null;
+  }
+  export interface ScanReport {
+    scannedSources: number;
+    itemsChecked: number;
+    newCandidates: number;
+    enabled: boolean;
+  }
+}
+
+export namespace ghost {
+  export interface GraphNode {
+    id: string;
+    kind: "chat" | "folder" | "root" | "tag";
+    label: string;
+    weight: number;
+    color: string | null;
+    positionX: number | null;
+    positionY: number | null;
+  }
+  export interface GraphEdge {
+    id: number;
+    sourceId: string;
+    targetId: string;
+    weight: number;
+    edgeType: string;
+  }
+  export interface Graph {
+    nodes: GraphNode[];
+    edges: GraphEdge[];
+  }
+  export interface GhostInsight {
+    id: number;
+    kind: string;
+    title: string;
+    body: string;
+    sourceIds: string | null;
+    score: number;
+    seen: number;
+    createdAt: string;
+  }
+  export interface GhostEvent {
+    id: number;
+    eventType: string;
+    sourceId: string | null;
+    sourceKind: string | null;
+    durationMs: number;
+    metadata: string | null;
+    createdAt: string;
+  }
+  export interface AttentionCell {
+    day: number;
+    hour: number;
+    count: number;
+    durationMs: number;
+  }
+  export interface GhostStats {
+    totalEvents: number;
+    totalChats: number;
+    totalFolders: number;
+    totalInsights: number;
+    graphNodes: number;
+    graphEdges: number;
+    mostVisited: [string, string, number][];
+    topTags: [string, number][];
+    streakDays: number;
+    peakHour: number | null;
+    peakDay: number | null;
+  }
+  export interface GhostSnapshot {
+    stats: GhostStats;
+    graph: Graph;
+    insights: GhostInsight[];
+    heatmap: AttentionCell[];
+    recentEvents: GhostEvent[];
+  }
+}
+
+export namespace autonomy {
+  export type RuntimeMode = "stopped" | "running" | "paused";
+  export type BuildState =
+    | "unknown"
+    | "idle"
+    | "running"
+    | "succeeded"
+    | { failed: { message: string } };
+  export type TestState =
+    | "unknown"
+    | "idle"
+    | "running"
+    | { passed: { count: number } }
+    | { failed: { passed: number; failed: number; message: string | null } };
+  export interface RuntimeStats {
+    mode: RuntimeMode;
+    cyclesTotal: number;
+    cyclesWithAction: number;
+    eventsConsumedTotal: number;
+    lastCycleAtMs: number;
+    worldStateVersion: number;
+    uptimeSecs: number;
+  }
+  export interface WorldState {
+    version: number;
+    updatedAtMs: number;
+    activeApp: string | null;
+    activeWindowTitle: string | null;
+    activeProject: string | null;
+    activeFile: { path: string; project: string | null; openedAtMs: number } | null;
+    workflowPhase: string;
+    buildState: BuildState;
+    testState: TestState;
+    activeTasks: Array<{ id: number; title: string; status: string }>;
+    recentFiles: Array<{ path: string; project: string | null; openedAtMs: number }>;
+    recentCommands: Array<{ cmd: string; cwd: string | null; atMs: number }>;
+    recentErrors: ErrorState[];
+    recentAppSwitches: string[];
+    recentSearches: string[];
+    resource: {
+      cpuPct: number;
+      memUsedMb: number;
+      memTotalMb: number;
+      atMs: number;
+    };
+    lastActionAtMs: number;
+    lastActionId: number | null;
+    lastGoalId: number | null;
+  }
+  export interface ErrorState {
+    message: string;
+    source: string | null;
+    atMs: number;
+  }
+  export interface RuntimeSnapshot {
+    mode: RuntimeMode;
+    stats: RuntimeStats;
+    worldState: WorldState;
+  }
+}
 
 export namespace health {
   export interface CacheSize {
