@@ -21,8 +21,6 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const goHome = useAppStore((s) => s.goHome);
   const clearSearch = useAppStore((s) => s.clearSearch);
 
-  // Dashboard vs tree navigation. A specific root/chat view or active search
-  // always wins over the dashboard toggle.
   const [view, setView] = useState<View>("dashboard");
   const inDetailView = Boolean(currentRootId) || Boolean(currentChatId) || searchResults !== null;
   const showDashboard = view === "dashboard" && !inDetailView;
@@ -55,10 +53,12 @@ export function AppLayout({ children }: { children: ReactNode }) {
   };
   const goAutonomy = () => {
     clearSearch();
+    goHome();
     setView("autonomy");
   };
 
-  // Keyboard: Ctrl/Cmd+1 dashboard, Ctrl/Cmd+2 tree, Ctrl/Cmd+3 screens.
+  // Keep the global navigation stable on all window widths. Navigation controls
+  // remain visible while the selected workspace is shown below the top bar.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "1") {
@@ -76,6 +76,15 @@ export function AppLayout({ children }: { children: ReactNode }) {
       } else if ((e.ctrlKey || e.metaKey) && e.key === "5") {
         e.preventDefault();
         goPlanner();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "6") {
+        e.preventDefault();
+        goAmbient();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "7") {
+        e.preventDefault();
+        goGhost();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "8") {
+        e.preventDefault();
+        goAutonomy();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -97,60 +106,28 @@ export function AppLayout({ children }: { children: ReactNode }) {
         </button>
 
         <nav className="nav-tabs" aria-label="Main views">
-          <button
-            className={`nav-tab${showDashboard ? " active" : ""}`}
-            onClick={goDashboard}
-            title="Ctrl/Cmd+1"
-          >
+          <button className={`nav-tab${showDashboard ? " active" : ""}`} onClick={goDashboard} title="Ctrl/Cmd+1">
             ⌂ Dashboard
           </button>
-          <button
-            className={`nav-tab${!showDashboard && view === "tree" ? " active" : ""}`}
-            onClick={goTree}
-            title="Ctrl/Cmd+2"
-          >
+          <button className={`nav-tab${!showDashboard && view === "tree" ? " active" : ""}`} onClick={goTree} title="Ctrl/Cmd+2">
             🌳 Knowledge Tree
           </button>
-          <button
-            className={`nav-tab${view === "screens" ? " active" : ""}`}
-            onClick={goScreens}
-            title="Ctrl/Cmd+3"
-          >
+          <button className={`nav-tab${view === "screens" ? " active" : ""}`} onClick={goScreens} title="Ctrl/Cmd+3">
             📺 Screens
           </button>
-          <button
-            className={`nav-tab${view === "inbox" ? " active" : ""}`}
-            onClick={goInbox}
-            title="Ctrl/Cmd+4"
-          >
+          <button className={`nav-tab${view === "inbox" ? " active" : ""}`} onClick={goInbox} title="Ctrl/Cmd+4">
             📥 Inbox
           </button>
-          <button
-            className={`nav-tab${view === "planner" ? " active" : ""}`}
-            onClick={goPlanner}
-            title="Ctrl/Cmd+5"
-          >
+          <button className={`nav-tab${view === "planner" ? " active" : ""}`} onClick={goPlanner} title="Ctrl/Cmd+5">
             🗓️ Planner
           </button>
-          <button
-            className={`nav-tab${view === "ambient" ? " active" : ""}`}
-            onClick={goAmbient}
-            title="Ambient Memory"
-          >
+          <button className={`nav-tab${view === "ambient" ? " active" : ""}`} onClick={goAmbient} title="Ambient Memory">
             🧠 Ambient Memory
           </button>
-          <button
-            className={`nav-tab${view === "ghost" ? " active" : ""}`}
-            onClick={goGhost}
-            title="The Ghost — knowledge graph & insights"
-          >
+          <button className={`nav-tab${view === "ghost" ? " active" : ""}`} onClick={goGhost} title="The Ghost — knowledge graph & insights">
             👻 Ghost
           </button>
-          <button
-            className={`nav-tab${view === "autonomy" ? " active" : ""}`}
-            onClick={goAutonomy}
-            title="Autonomy Runtime"
-          >
+          <button className={`nav-tab${view === "autonomy" ? " active" : ""}`} onClick={goAutonomy} title="Autonomy Runtime">
             🤖 Autonomy
           </button>
         </nav>
@@ -158,11 +135,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
         <SearchBox />
         <div className="topbar-spacer" />
         {!currentRootId && (
-          <button
-            className="btn"
-            onClick={() => openDialog({ kind: "create-root" })}
-            title="Ctrl/Cmd+Shift+N"
-          >
+          <button className="btn" onClick={() => openDialog({ kind: "create-root" })} title="Ctrl/Cmd+Shift+N">
             + New Index
           </button>
         )}
@@ -171,8 +144,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           title="Toggle theme (dark / light)"
           aria-label="Toggle theme"
           onClick={() => {
-            const next =
-              document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+            const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
             document.documentElement.dataset.theme = next;
             localStorage.setItem("strawberry-theme-v2", next);
           }}
