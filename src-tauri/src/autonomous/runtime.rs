@@ -28,6 +28,7 @@ pub enum RuntimeMode {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RuntimeStats {
     pub mode: RuntimeMode,
     pub cycles_total: u64,

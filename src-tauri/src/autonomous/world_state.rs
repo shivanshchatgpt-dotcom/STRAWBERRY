@@ -67,6 +67,7 @@ impl Default for TestState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct TaskState {
     pub id: TaskId,
     pub title: String,
@@ -76,6 +77,7 @@ pub struct TaskState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct ErrorState {
     pub message: String,
     pub source: String,
@@ -83,21 +85,27 @@ pub struct ErrorState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct RecentFile {
     pub path: String,
     pub project: Option<String>,
+    #[serde(rename = "openedAtMs")]
     pub at_ms: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct RecentCommand {
+    #[serde(rename = "cmd")]
     pub command: String,
+    #[serde(rename = "cwd")]
     pub project: Option<String>,
     pub at_ms: i64,
     pub exit_code: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct ResourceState {
     pub cpu_pct: f32,
     pub mem_used_mb: u32,
@@ -113,6 +121,7 @@ impl Default for ResourceState {
 
 /// The single source of truth for the agent's current environment.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorldState {
     pub version: WorldStateVersion,
     pub updated_at_ms: i64,
