@@ -502,4 +502,3 @@ mod tests {
         assert_eq!(hit.as_deref(), Some("c"), "FTS should find the chat");
     }
 }
-=======
