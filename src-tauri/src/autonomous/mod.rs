@@ -33,11 +33,15 @@ pub mod world_state;
 pub mod runtime;
 pub mod cycle;
 pub mod event;
+pub mod adapter;
+pub mod file_watcher;
+pub mod session;
 
 pub use world_state::{WorldState, WorldStateDiff, WorldStateVersion};
 pub use runtime::{AutonomyRuntime, RuntimeMode, RuntimeStats};
 pub use cycle::{AutonomyCycle, CycleResult, CycleOutcome};
 pub use event::{NormalizedEvent, EventKind, EventBus};
+pub use adapter::{SourceAdapter, RawSignal, AdapterInfo};
 
 /// Strongly-typed identifiers used across the autonomy stack.
 pub mod ids {

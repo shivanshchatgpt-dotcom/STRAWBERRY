@@ -6,12 +6,13 @@ import { DashboardView } from "../Dashboard/DashboardView";
 import { ScreensView } from "../Screens/ScreensView";
 import { InboxView } from "../Inbox/InboxView";
 import { PlannerView } from "../Planner/PlannerView";
+import { CalendarView } from "../Calendar/CalendarView";
 import { AmbientMemoryView } from "../AmbientMemory/AmbientMemoryView";
 import { GhostPanel } from "../Ghost/GhostPanel";
 import { AutonomyPanel } from "../Autonomy/AutonomyPanel";
 import strawberryIcon from "../../assets/strawberry-icon.png";
 
-type View = "dashboard" | "tree" | "screens" | "inbox" | "planner" | "ambient" | "ghost" | "autonomy";
+type View = "dashboard" | "tree" | "screens" | "inbox" | "planner" | "calendar" | "ambient" | "ghost" | "autonomy";
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const openDialog = useAppStore((s) => s.openDialog);
@@ -44,6 +45,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const goPlanner = () => {
     clearSearch();
     setView("planner");
+  };
+  const goCalendar = () => {
+    clearSearch();
+    setView("calendar");
   };
   const goAmbient = () => {
     clearSearch();
@@ -133,6 +138,13 @@ export function AppLayout({ children }: { children: ReactNode }) {
             🗓️ Planner
           </button>
           <button
+            className={`nav-tab${view === "calendar" ? " active" : ""}`}
+            onClick={goCalendar}
+            title="Advanced Calendar"
+          >
+            📅 Calendar
+          </button>
+          <button
             className={`nav-tab${view === "ambient" ? " active" : ""}`}
             onClick={goAmbient}
             title="Ambient Memory"
@@ -190,6 +202,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
           <InboxView />
         ) : view === "planner" ? (
           <PlannerView />
+        ) : view === "calendar" ? (
+          <CalendarView />
         ) : view === "ambient" ? (
           <AmbientMemoryView />
         ) : view === "ghost" ? (

@@ -15,7 +15,7 @@ import type {
   TreeNode,
 } from "./types";
 
-async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+export async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   try {
     return await invoke<T>(cmd, args ?? {});
   } catch (e) {
@@ -206,22 +206,32 @@ export const api = {
       startRange: startRange ?? null,
       endRange: endRange ?? null,
     }),
-  createCalendarEvent: (params: {
-    title: string;
-    description?: string;
-    startAt: string;
-    endAt: string;
-    timezone?: string;
-    category?: string;
-    sourceUrl?: string;
-    location?: string;
-    isAllDay?: boolean;
-    certificateOffered?: boolean;
-    registrationRequired?: boolean;
-    reminderMinutes?: number[];
-  }) => call<import("./types").CalendarEvent>("create_calendar_event", params),
+  createCalendarEvent: (params: import("./types").CalendarEventInput) =>
+    call<import("./types").CalendarEvent>("create_calendar_event", {
+      title: params.title,
+      description: params.description ?? null,
+      startAt: params.startAt,
+      endAt: params.endAt,
+      timezone: params.timezone ?? null,
+      category: params.category ?? null,
+      sourceUrl: params.sourceUrl ?? null,
+      location: params.location ?? null,
+      isAllDay: params.isAllDay ?? false,
+      certificateOffered: params.certificateOffered ?? false,
+      registrationRequired: params.registrationRequired ?? false,
+      recurrence: params.recurrence ?? "none",
+      recurrenceEnd: params.recurrenceEnd ?? null,
+      color: params.color ?? null,
+      reminderMinutes: params.reminderMinutes ?? null,
+    }),
+  updateCalendarEvent: (id: string, params: import("./types").CalendarEventInput) =>
+    call<import("./types").CalendarEvent>("update_calendar_event", { id, ...params }),
   deleteCalendarEvent: (id: string) =>
     call<void>("delete_calendar_event", { id }),
+  listEventReminders: (eventId: string) =>
+    call<import("./types").EventReminder[]>("list_event_reminders", { eventId }),
+  searchCalendarEvents: (query: string) =>
+    call<import("./types").CalendarEvent[]>("search_calendar_events", { query }),
 
   // Resume ----------------------------------------------------------------------
   getResumeSuggestions: (limit = 5) =>
@@ -366,6 +376,24 @@ export const api = {
     call<void>("autonomy_run_cycle", { batchSize }),
   autonomyPublish: (kind: string, data: Record<string, unknown>) =>
     call<void>("autonomy_publish", { kind, data }),
+
+  // ── AI / Intelligence ────────────────────────────────────────────────────
+  aiGetStatus: () => call<Record<string, unknown>>("ai_get_status"),
+  aiSetEnabled: (enabled: boolean) =>
+    call<void>("ai_set_enabled", { enabled }),
+  aiConfigureProvider: (args: {
+    provider: string;
+    model?: string;
+    baseUrl?: string;
+    apiKey?: string;
+    name?: string;
+  }) => call<void>("ai_configure_provider", args),
+  aiTestConnection: (provider: string) =>
+    call<string>("ai_test_connection", { provider }),
+  aiListModels: (provider: string) =>
+    call<string[]>("ai_list_models", { provider }),
+  aiRemoveCredential: (provider: string) =>
+    call<void>("ai_remove_credential", { provider }),
 };
 
 export namespace wellness {

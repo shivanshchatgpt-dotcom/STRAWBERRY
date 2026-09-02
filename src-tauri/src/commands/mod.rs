@@ -7,6 +7,7 @@ pub mod ghost;
 pub mod health;
 pub mod handoff;
 pub mod inbox;
+pub mod intelligence;
 pub mod news;
 pub mod planner;
 pub mod resume;

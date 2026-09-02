@@ -314,6 +314,9 @@ export interface CalendarEvent {
   isAllDay: boolean;
   certificateOffered: boolean;
   registrationRequired: boolean;
+  recurrence: string;
+  recurrenceEnd?: string | null;
+  color?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -324,6 +327,28 @@ export interface EventReminder {
   minutesBefore: number;
   enabled: boolean;
   triggered: boolean;
+}
+
+/** Payload accepted by `create_calendar_event` / `update_calendar_event`. */
+export interface CalendarEventInput {
+  title: string;
+  description?: string | null;
+  startAt: string;
+  endAt: string;
+  timezone?: string | null;
+  category?: string | null;
+  sourceUrl?: string | null;
+  location?: string | null;
+  isAllDay?: boolean;
+  certificateOffered?: boolean;
+  registrationRequired?: boolean;
+  /** `none` | `daily` | `weekly` | `monthly` | `yearly`. */
+  recurrence?: string;
+  /** Inclusive last day an occurrence may start on (YYYY-MM-DD). */
+  recurrenceEnd?: string | null;
+  color?: string | null;
+  /** Minutes-before-start reminder offsets; replaces existing reminders when set. */
+  reminderMinutes?: number[];
 }
 
 // ---------------------------------------------------------------------------

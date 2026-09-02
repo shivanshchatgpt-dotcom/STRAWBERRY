@@ -5,6 +5,7 @@ mod commands;
 mod db;
 mod error;
 mod ghost;
+mod intelligence;
 mod resume;
 mod screen;
 mod snapshot;
@@ -22,7 +23,8 @@ use state::AppState;
 use tauri::Manager;
 use wellness::WellnessAgent;
 
-/// Holds the two shutdown flags the background threads watch.
+/// Holds the shutdown flags the background threads watch.
+/// Flipped on app exit so threads stop cooperatively instead of being killed.
 struct ShutdownFlags {
     autonomy: Arc<AtomicBool>,
     ghost: Arc<AtomicBool>,
@@ -30,7 +32,7 @@ struct ShutdownFlags {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             let st = AppState::init(data_dir).map_err(|e| -> Box<dyn std::error::Error> {
@@ -142,7 +144,10 @@ pub fn run() {
             commands::planner::add_event,
             commands::planner::list_calendar_events,
             commands::planner::create_calendar_event,
+            commands::planner::update_calendar_event,
             commands::planner::delete_calendar_event,
+            commands::planner::list_event_reminders,
+            commands::planner::search_calendar_events,
             commands::planner::get_daily_briefing,
             commands::tabs::record_tab_visit,
             commands::tabs::list_tab_groups,
@@ -211,7 +216,33 @@ pub fn run() {
             commands::ambient::get_ambient_stats,
             commands::ambient::generate_deterministic_report,
             commands::get_app_info,
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running Chat Memory Tree");
+            commands::intelligence::ai_get_status,
+            commands::intelligence::ai_set_enabled,
+            commands::intelligence::ai_configure_provider,
+            commands::intelligence::ai_test_connection,
+            commands::intelligence::ai_list_models,
+            commands::intelligence::ai_remove_credential,
+        ]);
+
+    let app = builder
+        .build(tauri::generate_context!())
+        .expect("error while building Chat Memory Tree");
+
+    // Graceful shutdown: flip all background-thread shutdown flags
+    // so threads stop cooperatively before the process exits.
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::Exit = event {
+            if let Some(flags) = app_handle.try_state::<ShutdownFlags>() {
+                flags
+                    .autonomy
+                    .store(true, std::sync::atomic::Ordering::Relaxed);
+                flags
+                    .ghost
+                    .store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+            if let Some(agent) = app_handle.try_state::<Arc<std::sync::Mutex<WellnessAgent>>>() {
+                WellnessAgent::signal_shutdown(agent.inner());
+            }
+        }
+    });
 }

@@ -6,31 +6,15 @@ use crate::ghost::GhostInsight;
 use crate::db::now_iso;
 
 /// Build a JSON array of tag strings from a comma-separated value.
-/// Empty / whitespace tokens are dropped. Embedded double-quotes and
-/// backslashes are escaped to keep the result valid JSON.
+/// Empty / whitespace tokens are dropped. Uses serde_json for safe,
+/// standards-compliant JSON escaping.
 fn build_tags_json_array(csv: &str) -> String {
-    let mut out = String::from('[');
-    let mut first = true;
-    for raw in csv.split(',') {
-        let t = raw.trim();
-        if t.is_empty() { continue; }
-        if !first { out.push(','); }
-        first = false;
-        out.push('"');
-        for ch in t.chars() {
-            match ch {
-                '"' => { out.push('\\'); out.push('"'); }
-                '\\' => { out.push('\\'); out.push('\\'); }
-                '\n' => { out.push('\\'); out.push('n'); }
-                '\r' => { out.push('\\'); out.push('r'); }
-                '\t' => { out.push('\\'); out.push('t'); }
-                c => out.push(c),
-            }
-        }
-        out.push('"');
-    }
-    out.push(']');
-    out
+    let tags: Vec<&str> = csv
+        .split(',')
+        .map(|t| t.trim())
+        .filter(|t| !t.is_empty())
+        .collect();
+    serde_json::to_string(&tags).unwrap_or_else(|_| "[]".to_string())
 }
 
 /// Generate fresh insights based on current data. Wipes old unseen insights.
@@ -480,5 +464,58 @@ fn truncate(s: &str, max: usize) -> String {
     else {
         let cut: String = s.chars().take(max).collect();
         format!("{}…", cut)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tags_json_ordinary() {
+        let r = build_tags_json_array("rust,tauri,sqlite");
+        assert_eq!(r, r#"["rust","tauri","sqlite"]"#);
+    }
+
+    #[test]
+    fn tags_json_empty() {
+        assert_eq!(build_tags_json_array(""), "[]");
+        assert_eq!(build_tags_json_array("  , ,  "), "[]");
+    }
+
+    #[test]
+    fn tags_json_quotes_escaped() {
+        let r = build_tags_json_array(r#"has"quote,normal"#);
+        assert!(r.contains(r#"\""#), "quotes must be escaped");
+        assert!(r.contains("normal"));
+    }
+
+    #[test]
+    fn tags_json_backslashes_escaped() {
+        let r = build_tags_json_array("path\\to\\file,ok");
+        assert!(r.contains("\\\\"), "backslashes must be escaped");
+    }
+
+    #[test]
+    fn tags_json_newlines_escaped() {
+        let r = build_tags_json_array("line1\nline2");
+        assert!(r.contains("\\n"), "newlines must be escaped");
+    }
+
+    #[test]
+    fn tags_json_unicode_preserved() {
+        let r = build_tags_json_array("日本語,täg,#emoji🎉");
+        assert!(r.contains("日本語"));
+        assert!(r.contains("täg"));
+        assert!(r.contains("#emoji🎉"));
+    }
+
+    #[test]
+    fn tags_json_nested_json_like_text() {
+        let r = build_tags_json_array("{\"key\":\"val\"}");
+        // Must produce valid JSON that can be parsed back.
+        let parsed: Vec<String> = serde_json::from_str(&r).unwrap();
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0], r#"{"key":"val"}"#);
     }
 }

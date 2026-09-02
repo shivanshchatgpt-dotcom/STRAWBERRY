@@ -24,9 +24,12 @@ root.render(
 // the frameless popup window. The popup window itself never installs this
 // listener.
 if (!isPopup) {
-  try {
-    const { listen } = await import("@tauri-apps/api/event");
-    const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+  // Async IIFE (not top-level await): the Vite build targets es2021, where
+  // top-level await is unsupported. Behavior is unchanged.
+  void (async () => {
+    try {
+      const { listen } = await import("@tauri-apps/api/event");
+      const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
     // De-dupe: if a previous handler exists, detach it before installing a new one.
     const w = window as unknown as {
       __wellnessUnlisten?: () => void;
@@ -81,4 +84,5 @@ if (!isPopup) {
   } catch {
     // Tauri APIs not available in browser/dev; ignore
   }
+  })();
 }

@@ -2460,3 +2460,503 @@ pre.diagram-block {
   line-height: 1.5;
 }
 .ws-actions { display: flex; gap: 8px; }
+
+/* ─────────────────────────────────────────────────────────────
+   Advanced Calendar (additive `.cal-*` block — month/week/day,
+   event chips, search panel, event dialog). All colors go
+   through CSS variables so dark/light themes both work.
+   ───────────────────────────────────────────────────────────── */
+
+/* Toolbar: view tabs sit in the shared `.nav-tabs` above; this row
+   holds navigation, the range title, search, filter, and New Event. */
+.cal-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 14px 0 16px;
+}
+.cal-nav {
+  display: inline-flex;
+  gap: 6px;
+}
+.cal-title {
+  font-size: 14px;
+  font-weight: 680;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  margin-left: 2px;
+  margin-right: auto;
+}
+.cal-search {
+  min-width: 180px;
+  width: 220px;
+  padding: 7px 11px;
+  font-size: 13px;
+}
+.cal-filter {
+  padding: 7px 10px;
+  font-size: 12.5px;
+}
+
+/* Search results panel. */
+.cal-search-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  max-height: 320px;
+  overflow-y: auto;
+}
+.cal-sr {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-xs);
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.cal-sr:hover {
+  background: var(--bg-hover);
+}
+.cal-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--berry);
+}
+.cal-sr-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 560;
+}
+.cal-sr-when {
+  flex: none;
+  font-size: 11.5px;
+}
+.cal-sr-rec {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+/* ── Month view ── */
+.cal-month {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-panel);
+}
+.cal-dow {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+.cal-dow div {
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 640;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-auto-rows: minmax(92px, auto);
+}
+.cal-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 7px;
+  border-left: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+  min-width: 0;
+  overflow: hidden;
+  cursor: pointer;
+  transition: background var(--t-fast);
+}
+.cal-cell:nth-child(7n+1) {
+  border-left: none;
+}
+.cal-cell:hover {
+  background: var(--bg-hover);
+}
+.cal-cell.today {
+  background: rgba(251, 113, 133, 0.06);
+}
+.cal-cell.other {
+  opacity: 0.45;
+}
+.cal-daynum {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+.cal-cell.today .cal-daynum {
+  background: var(--berry);
+  color: var(--bg);
+}
+.cal-cell-items {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+  min-width: 0;
+}
+.cal-more {
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 10.5px;
+  color: var(--text-faint);
+  cursor: pointer;
+  text-align: left;
+  padding: 1px 4px;
+  width: fit-content;
+  border-radius: var(--radius-xs);
+}
+.cal-more:hover {
+  color: var(--berry);
+  background: var(--bg-hover);
+}
+
+/* ── Week / Day views ──
+   `.cal-week` is itself the scroll container so the sticky header,
+   all-day row, and time grid all share one width — no scrollbar
+   misalignment. `.cal-scroll` is a plain pass-through block. */
+.cal-week {
+  --cal-gutter: 56px;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  max-height: calc(100vh - 220px);
+  min-height: 420px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+}
+.cal-whead,
+.cal-allday,
+.cal-tgrid {
+  display: grid;
+  grid-template-columns: var(--cal-gutter) repeat(7, minmax(0, 1fr));
+}
+.cal-week.cal-day .cal-whead,
+.cal-week.cal-day .cal-allday,
+.cal-week.cal-day .cal-tgrid {
+  grid-template-columns: var(--cal-gutter) minmax(0, 1fr);
+}
+.cal-whead {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: 42px;
+  background: var(--bg-panel);
+}
+.cal-allday {
+  position: sticky;
+  top: 42px;
+  z-index: 2;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  min-height: 34px;
+}
+.cal-whday {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+  border-left: 1px solid var(--border);
+}
+.cal-whday b {
+  font-size: 14px;
+  color: var(--text);
+}
+.cal-whday.today {
+  color: var(--berry);
+  font-weight: 640;
+}
+/* Time grid: 24 rows × 44px = 1056px, positioned inline per slot. */
+.cal-tgrid {
+  height: 1056px;
+}
+.cal-tgrid > .cal-gutter {
+  position: relative;
+  height: 1056px;
+}
+.cal-hlabel {
+  position: absolute;
+  right: 8px;
+  transform: translateY(-6px);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  text-align: right;
+}
+.cal-daycol {
+  position: relative;
+  height: 1056px;
+  border-left: 1px solid var(--border);
+}
+.cal-hourslot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+}
+.cal-hourslot:hover {
+  background: var(--bg-hover);
+}
+/* Positioned event block (top/left/width/height + colors inline). */
+.cal-ev {
+  position: absolute;
+  z-index: 1;
+  overflow: hidden;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--berry);
+  padding: 3px 6px;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  background: none;
+}
+.cal-ev:hover {
+  filter: brightness(1.15);
+}
+.cal-ev-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.cal-ev-time {
+  display: block;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+}
+/* Current-time indicator. */
+.cal-now {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  height: 0;
+  border-top: 2px solid var(--berry);
+  pointer-events: none;
+}
+.cal-now-dot {
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--berry);
+}
+/* All-day row. */
+.cal-gutter.cal-adlabel {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: 8px;
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+.cal-adcell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px;
+  min-height: 34px;
+  border-left: 1px solid var(--border);
+  min-width: 0;
+}
+
+/* ── Event / task chips (month cells + all-day rows) ── */
+.cal-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 2px 6px;
+  border: none;
+  border-left: 3px solid var(--berry);
+  border-radius: var(--radius-xs);
+  background: var(--bg-inset);
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.cal-chip:hover {
+  background: var(--bg-active);
+}
+.cal-chip.allday {
+  background: var(--bg-active);
+}
+.cal-chip.todo.done {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+.cal-chip-time {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+.cal-chip-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Empty-state nudge below the grid. */
+.empty-state.cal-empty-hint {
+  margin: 14px 0;
+}
+
+/* ── Event dialog ── */
+.dialog.cal-dialog {
+  width: min(560px, calc(100vw - 48px));
+}
+.cal-dialog .field textarea {
+  min-height: 88px;
+}
+/* The base `.field` rule only full-widths text inputs and
+   textareas — size the date/datetime/select inputs here. */
+.cal-dialog .field input[type="date"],
+.cal-dialog .field input[type="datetime-local"],
+.cal-dialog .field select {
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 12.5px;
+}
+.cal-field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cal-field-row input[type="date"],
+.cal-field-row input[type="datetime-local"] {
+  flex: 1 1 130px;
+  min-width: 0;
+  width: auto;
+  padding: 7px 10px;
+  font-size: 12.5px;
+}
+.cal-field-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 640px) {
+  .cal-field-cols {
+    grid-template-columns: 1fr;
+  }
+}
+.cal-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+}
+/* The base input rule applies 8px 12px padding to every input,
+   including checkboxes — reset it explicitly. */
+.cal-check input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  margin: 0;
+  flex: none;
+  accent-color: var(--berry);
+  cursor: pointer;
+}
+/* Color swatches: Auto ("A") + preset colors + custom picker. */
+.cal-swatches {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.cal-swatch {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg-inset);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.cal-swatch.auto {
+  background: var(--bg-inset);
+}
+.cal-swatch.sel {
+  outline: 2px solid var(--berry);
+  outline-offset: 2px;
+  border-color: var(--berry);
+}
+.cal-color-input {
+  width: 26px;
+  height: 22px;
+  padding: 2px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg-inset);
+  cursor: pointer;
+  flex: none;
+}
+.cal-color-input::-webkit-color-swatch {
+  border: none;
+  border-radius: 4px;
+}
+/* Delete on the left, Cancel/Save on the right. */
+.dialog-actions.cal-dialog-actions {
+  flex-wrap: wrap;
+}
+.cal-dialog-actions .btn.danger {
+  margin-right: auto;
+}

@@ -41,131 +41,19 @@ pub fn open() -> Result<Connection, String> {
         .map_err(|e| e.to_string())?;
     ensure_schema(&conn)?;
     Ok(conn)
-}
-
-/// Create the exact same schema the Tauri app uses (idempotent).
-/// Mirrors migrations/001_init.sql + FTS5 table/triggers.
+}/// Create the exact same schema the Tauri app uses (idempotent).
+/// Delegates to `strawberry_core::schema::ensure_shared_schema` — the
+/// SINGLE SOURCE OF TRUTH for tables shared between app and daemon.
 fn ensure_schema(conn: &Connection) -> Result<(), String> {
-    conn.execute_batch(
-        r#"
-        CREATE TABLE IF NOT EXISTS roots (
-            id TEXT PRIMARY KEY, name TEXT NOT NULL, color TEXT, icon TEXT,
-            created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS nodes (
-            id TEXT PRIMARY KEY,
-            root_id TEXT NOT NULL REFERENCES roots(id) ON DELETE CASCADE,
-            parent_id TEXT REFERENCES nodes(id) ON DELETE CASCADE,
-            type TEXT NOT NULL CHECK(type IN ('folder','chat')),
-            name TEXT NOT NULL, position INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-        CREATE INDEX IF NOT EXISTS idx_nodes_root_id ON nodes(root_id);
-        CREATE INDEX IF NOT EXISTS idx_nodes_parent_id ON nodes(parent_id);
-        CREATE TABLE IF NOT EXISTS chats (
-            id TEXT PRIMARY KEY,
-            node_id TEXT NOT NULL UNIQUE REFERENCES nodes(id) ON DELETE CASCADE,
-            title TEXT NOT NULL DEFAULT '',
-            source TEXT NOT NULL DEFAULT 'manual',
-            raw_path TEXT NOT NULL, brief_path TEXT, first_idea TEXT, tags TEXT,
-            brief_text TEXT, char_count INTEGER, word_count INTEGER,
-            code_block_count INTEGER, error_count INTEGER, command_count INTEGER,
-            url_count INTEGER, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-        CREATE INDEX IF NOT EXISTS idx_chats_node_id ON chats(node_id);
-        CREATE TABLE IF NOT EXISTS chat_artifacts (
-            id TEXT PRIMARY KEY,
-            chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
-            artifact_type TEXT NOT NULL CHECK(artifact_type IN (
-                'code','error','command','url','decision','action_item',
-                'heading','question','answer',
-                'rejected','constraint','identifier')),
-            content TEXT NOT NULL, created_at TEXT NOT NULL);
-        CREATE INDEX IF NOT EXISTS idx_chat_artifacts_chat_id ON chat_artifacts(chat_id);
-        CREATE INDEX IF NOT EXISTS idx_chat_artifacts_type ON chat_artifacts(artifact_type);
-        "#,
-    )
-    .map_err(|e| e.to_string())?;
-
-    // FTS5 index + sync triggers (same as app; harmless if already present).
-    let _ = conn.execute_batch(
-        r#"
-        CREATE VIRTUAL TABLE IF NOT EXISTS chat_fts USING fts5(
-            title, first_idea, tags, brief_text,
-            content='chats', content_rowid='rowid');
-        CREATE TRIGGER IF NOT EXISTS chats_fts_ai AFTER INSERT ON chats BEGIN
-            INSERT INTO chat_fts(rowid,title,first_idea,tags,brief_text)
-            VALUES (new.rowid,coalesce(new.title,''),coalesce(new.first_idea,''),
-                    coalesce(new.tags,''),coalesce(new.brief_text,''));
-        END;
-        CREATE TRIGGER IF NOT EXISTS chats_fts_ad AFTER DELETE ON chats BEGIN
-            INSERT INTO chat_fts(chat_fts,rowid,title,first_idea,tags,brief_text)
-            VALUES ('delete',old.rowid,coalesce(old.title,''),
-                    coalesce(old.first_idea,''),coalesce(old.tags,''),
-                    coalesce(old.brief_text,''));
-        END;
-        CREATE TRIGGER IF NOT EXISTS chats_fts_au AFTER UPDATE ON chats BEGIN
-            INSERT INTO chat_fts(chat_fts,rowid,title,first_idea,tags,brief_text)
-            VALUES ('delete',old.rowid,coalesce(old.title,''),
-                    coalesce(old.first_idea,''),coalesce(old.tags,''),
-                    coalesce(old.brief_text,''));
-            INSERT INTO chat_fts(rowid,title,first_idea,tags,brief_text)
-            VALUES (new.rowid,coalesce(new.title,''),coalesce(new.first_idea,''),
-                    coalesce(new.tags,''),coalesce(new.brief_text,''));
-        END;
-        "#,
-    );
-    Ok(())
+    strawberry_core::schema::ensure_shared_schema(conn)
 }
 
 fn now_iso() -> String {
-    // RFC3339 UTC without external crates.
-    let d = SystemTimeUnix::now();
-    let secs = d.0;
-    let days = secs.div_euclid(86_400);
-    let rem = secs.rem_euclid(86_400);
-    let (y, m, dd) = civil_from_days(days);
-    format!(
-        "{y:04}-{m:02}-{dd:02}T{:02}:{:02}:{:02}Z",
-        rem / 3600,
-        (rem % 3600) / 60,
-        rem % 60
-    )
+    strawberry_core::schema::now_iso()
 }
 
-struct SystemTimeUnix(u64);
-impl SystemTimeUnix {
-    fn now() -> Self {
-        Self(
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0),
-        )
-    }
-}
-
-/// Days-since-epoch → (year, month, day). Howard Hinnant's algorithm.
-fn civil_from_days(z: u64) -> (i64, u64, u64) {
-    let z = z as i64 + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = (doy - (153 * mp + 2) / 5 + 1) as u64;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u64;
-    ((if m <= 2 { y + 1 } else { y }), m, d)
-}
-
-/// Unique-enough ID without pulling uuid crate.
 fn gen_id(prefix: &str) -> String {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    let t = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    format!("{prefix}-{t:x}-{n:x}")
+    strawberry_core::schema::gen_id(prefix)
 }
 
 /// Insert a capture as a full first-class chat inside the "🍓 Captures" root.
@@ -294,9 +182,5 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
-    #[test]
-    fn civil_date_known_value() {
-        // 2026-08-25 == day 20690
-        assert_eq!(civil_from_days(20_690), (2026, 8, 25));
-    }
+    // civil_from_days and now_iso tests live in strawberry_core::schema::tests
 }

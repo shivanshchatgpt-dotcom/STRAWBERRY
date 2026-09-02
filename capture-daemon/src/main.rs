@@ -12,8 +12,13 @@ mod semantic;
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use std::sync::LazyLock;
 use strawberry_core::handoff as core_handoff;
 use strawberry_core::ocr as core_ocr;
+use strawberry_core::privacy::PrivacyPolicy;
+
+/// Global privacy policy — constructed once, evaluated for every capture.
+static PRIVACY: LazyLock<PrivacyPolicy> = LazyLock::new(PrivacyPolicy::new);
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -21,10 +26,22 @@ fn main() {
     // One-shot mode: `--save-once <kind> <text>` → DB insert + JSON, then exit.
     if args.len() >= 4 && args[1] == "--save-once" {
         let kind = Box::leak(args[2].clone().into_boxed_str());
-        match db::insert_capture(kind, &args[3], std::path::Path::new("/tmp/sb-once.txt")) {
+        // ── PRIVACY SCREENING for --save-once ───────────────────────────
+        let decision = PRIVACY.evaluate(&args[3]);
+        if decision.is_blocked() {
+            eprintln!("🔒 BLOCKED ({}). Not persisted.", decision.summary());
+            std::process::exit(0);
+        }
+        let effective = if decision.needs_redaction() {
+            println!("🔒 Redacting {} span(s) before persistence", decision.matches);
+            PRIVACY.redact(&args[3])
+        } else {
+            args[3].clone()
+        };
+        match db::insert_capture(kind, &effective, std::path::Path::new("/tmp/sb-once.txt")) {
             Ok(id) => {
                 println!("INSERTED {id}");
-                if let Err(e) = semantic::index_chat(&id, &args[3]) {
+                if let Err(e) = semantic::index_chat(&id, &effective) {
                     eprintln!("EMBED SKIPPED: {e}");
                 } else {
                     println!("EMBEDDED {id}");
@@ -367,6 +384,23 @@ fn show_image_popup(img: clip::ClipboardImage, ocr: core_ocr::OcrResult) {
 }
 
 fn save_capture(kind: &str, text: &str) -> Result<std::path::PathBuf, String> {
+    // ── PRIVACY SCREENING ──────────────────────────────────────────────
+    // Screen BEFORE any persistence: SQLite, FTS, raw files on disk.
+    let decision = PRIVACY.evaluate(text);
+    if decision.is_blocked() {
+        println!(
+            "🔒 Capture blocked ({}) — not persisted",
+            decision.summary()
+        );
+        return Err(format!("Blocked by privacy policy: {}", decision.summary()));
+    }
+    let effective_text = if decision.needs_redaction() {
+        println!("🔒 Redacting {} span(s) before persistence", decision.matches);
+        PRIVACY.redact(text)
+    } else {
+        text.to_string()
+    };
+
     let dir = db::app_data_dir().join("captures");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
@@ -376,7 +410,7 @@ fn save_capture(kind: &str, text: &str) -> Result<std::path::PathBuf, String> {
         .unwrap_or(0);
     let path = dir.join(format!("{ts}_{kind}.json"));
 
-    let keywords: Vec<String> = text
+    let keywords: Vec<String> = effective_text
         .split_whitespace()
         .filter(|w| w.len() > 3)
         .take(6)
@@ -387,15 +421,16 @@ fn save_capture(kind: &str, text: &str) -> Result<std::path::PathBuf, String> {
         .filter(|w| !w.is_empty())
         .collect();
 
-    let formatted_text = core_ocr::preserve_diagram(text);
+    let formatted_text = core_ocr::preserve_diagram(&effective_text);
 
     let json = serde_json::json!({
         "type": kind,
         "keywords": keywords,
-        "char_count": text.chars().count(),
+        "char_count": effective_text.chars().count(),
         "captured_at": ts,
         "source": "clipboard-popup",
         "text": formatted_text,
+        "privacy_action": decision.action.label(),
     });
 
     std::fs::write(&path, serde_json::to_string_pretty(&json).unwrap())
@@ -420,6 +455,22 @@ fn save_image_capture(
     img: &clip::ClipboardImage,
     ocr: &core_ocr::OcrResult,
 ) -> Result<(std::path::PathBuf, String), String> {
+    // ── PRIVACY SCREENING on OCR text ──────────────────────────────────
+    let decision = PRIVACY.evaluate(&ocr.extracted_text);
+    let effective_ocr = if decision.is_blocked() {
+        println!(
+            "🔒 Image OCR text blocked ({}) — not persisted",
+            decision.summary()
+        );
+        // Still save the image, but the OCR text is suppressed.
+        String::new()
+    } else if decision.needs_redaction() {
+        println!("🔒 Redacting {} span(s) in OCR text", decision.matches);
+        PRIVACY.redact(&ocr.extracted_text)
+    } else {
+        ocr.extracted_text.clone()
+    };
+
     let dir = db::app_data_dir().join("captures");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
@@ -442,7 +493,7 @@ fn save_image_capture(
         img.width,
         img.height,
         img_path.display(),
-        ocr.extracted_text
+        effective_ocr
     );
 
     let kind = if ocr.is_diagram { "diagram" } else { "image" };

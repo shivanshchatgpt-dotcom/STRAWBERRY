@@ -133,14 +133,21 @@ impl WellnessAgent {
         // Snapshot state under the lock, then release.
         let (app, state) = {
             let s = agent.lock().unwrap();
-            (s.app.clone(), s.state.lock().unwrap().clone())
+            let st = s.state.lock().unwrap().clone();
+            (s.app.clone(), st)
         };
         if !state.enabled {
             return;
         }
 
         if let Some(snoozed) = &state.snoozed_until {
-            if Utc::now().to_rfc3339() < *snoozed {
+            // Parse the RFC3339 timestamp and compare as actual datetimes,
+            // not as lexicographic strings (which can break across formats).
+            let now = Utc::now();
+            let snoozed_dt = DateTime::parse_from_rfc3339(snoozed)
+                .map(|dt| dt.with_timezone(&Utc))
+                .unwrap_or_else(|_| now + chrono::Duration::hours(1)); // malformed → treat as snoozed
+            if now < snoozed_dt {
                 return;
             }
         }
@@ -324,7 +331,8 @@ impl WellnessAgent {
 
     pub fn get_state(agent: &Arc<Mutex<Self>>) -> WellnessState {
         let s = agent.lock().unwrap();
-        s.state.lock().unwrap().clone()
+        let st = s.state.lock().unwrap().clone();
+        st
     }
 
     pub fn set_enabled(agent: &Arc<Mutex<Self>>, app: &AppHandle, enabled: bool) -> Cmd<()> {

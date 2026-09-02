@@ -81,23 +81,58 @@ fn next_event_id() -> u64 {
     EVENT_COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 
-/// Bounded, thread-safe event bus.
+/// Bounded, thread-safe event bus with multi-subscriber support.
 ///
-/// Observers call `publish` to push events. The runtime consumes them via
-/// `drain` (returns up to N events, clearing the queue).
+/// Observers call `publish` to push events. Consumers subscribe via
+/// `subscribe` and receive events through their own bounded channel.
+/// The legacy `drain` method remains for the AutonomyRuntime.
 #[derive(Debug, Clone)]
 pub struct EventBus {
     inner: Arc<Mutex<Vec<NormalizedEvent>>>,
     capacity: usize,
+    subscribers: Arc<Mutex<Vec<Subscriber>>>,
 }
+
+/// A subscriber handle. Receives a clone of every published event.
+#[derive(Clone)]
+pub struct Subscriber {
+    id: usize,
+    tx: std::sync::mpsc::SyncSender<NormalizedEvent>,
+    name: String,
+}
+
+impl std::fmt::Debug for Subscriber {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Subscriber")
+            .field("id", &self.id)
+            .field("name", &self.name)
+            .finish()
+    }
+}
+
+static SUBSCRIBER_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 impl EventBus {
     pub fn new(capacity: usize) -> Self {
-        Self { inner: Arc::new(Mutex::new(Vec::with_capacity(capacity))), capacity }
+        Self {
+            inner: Arc::new(Mutex::new(Vec::with_capacity(capacity))),
+            capacity,
+            subscribers: Arc::new(Mutex::new(Vec::new())),
+        }
     }
 
-    /// Push an event. Drops the oldest if at capacity.
+    /// Push an event. Drops the oldest if at capacity. Also fans out
+    /// to all active subscribers (non-blocking — drops if channel full).
     pub fn publish(&self, ev: NormalizedEvent) {
+        // Fan out to subscribers first (before queuing)
+        {
+            let subs = self.subscribers.lock().unwrap();
+            for sub in subs.iter() {
+                // Non-blocking send; if subscriber's channel is full, drop.
+                let _ = sub.tx.try_send(ev.clone());
+            }
+        }
+        // Legacy: also queue for drain-based consumers
         let mut q = self.inner.lock().unwrap();
         if q.len() >= self.capacity {
             q.remove(0);
@@ -105,7 +140,23 @@ impl EventBus {
         q.push(ev);
     }
 
-    /// Drain up to `n` events from the front of the queue.
+    /// Subscribe to the event bus. Returns a receiver that gets a clone
+    /// of every published event. The channel is bounded (256 events);
+    /// if the subscriber falls behind, events are dropped (non-blocking).
+    pub fn subscribe(&self, name: impl Into<String>) -> (Subscriber, std::sync::mpsc::Receiver<NormalizedEvent>) {
+        let (tx, rx) = std::sync::mpsc::sync_channel(256);
+        let id = SUBSCRIBER_COUNTER.fetch_add(1, Ordering::Relaxed) as usize;
+        let sub = Subscriber { id, tx, name: name.into() };
+        self.subscribers.lock().unwrap().push(sub.clone());
+        (sub, rx)
+    }
+
+    /// Remove a subscriber by id.
+    pub fn unsubscribe(&self, id: usize) {
+        self.subscribers.lock().unwrap().retain(|s| s.id != id);
+    }
+
+    /// Drain up to `n` events from the front of the queue (legacy API).
     pub fn drain(&self, n: usize) -> Vec<NormalizedEvent> {
         let mut q = self.inner.lock().unwrap();
         let take = n.min(q.len());
@@ -120,6 +171,11 @@ impl EventBus {
     /// True if no events are queued.
     pub fn is_empty(&self) -> bool {
         self.inner.lock().unwrap().is_empty()
+    }
+
+    /// Number of active subscribers.
+    pub fn subscriber_count(&self) -> usize {
+        self.subscribers.lock().unwrap().len()
     }
 }
 
@@ -155,5 +211,44 @@ mod tests {
         // oldest two are dropped; remaining are s3 and s4
         assert!(drained.iter().any(|e| matches!(&e.kind, EventKind::Heartbeat { source } if source == "s3")));
         assert!(drained.iter().any(|e| matches!(&e.kind, EventKind::Heartbeat { source } if source == "s4")));
+    }
+
+    #[test]
+    fn subscriber_receives_events() {
+        let bus = EventBus::new(8);
+        let (_sub, rx) = bus.subscribe("test-subscriber");
+        assert_eq!(bus.subscriber_count(), 1);
+
+        bus.publish(NormalizedEvent::new(EventKind::Heartbeat { source: "ping".into() }));
+        bus.publish(NormalizedEvent::new(EventKind::FileModified { path: "x.rs".into(), project: None }));
+
+        // Subscriber should receive both events
+        let ev1 = rx.try_recv().unwrap();
+        let ev2 = rx.try_recv().unwrap();
+        assert!(matches!(&ev1.kind, EventKind::Heartbeat { source } if source == "ping"));
+        assert!(matches!(&ev2.kind, EventKind::FileModified { .. }));
+    }
+
+    #[test]
+    fn unsubscribe_removes_subscriber() {
+        let bus = EventBus::new(8);
+        let (sub, _rx) = bus.subscribe("test-unsub");
+        assert_eq!(bus.subscriber_count(), 1);
+        bus.unsubscribe(sub.id);
+        assert_eq!(bus.subscriber_count(), 0);
+    }
+
+    #[test]
+    fn multiple_subscribers_independent() {
+        let bus = EventBus::new(8);
+        let (_sub1, rx1) = bus.subscribe("sub1");
+        let (_sub2, rx2) = bus.subscribe("sub2");
+        assert_eq!(bus.subscriber_count(), 2);
+
+        bus.publish(NormalizedEvent::new(EventKind::Heartbeat { source: "test".into() }));
+
+        // Both subscribers get the event
+        assert!(rx1.try_recv().is_ok());
+        assert!(rx2.try_recv().is_ok());
     }
 }

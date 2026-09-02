@@ -9,13 +9,20 @@
 //! - [`brief`] renders the human-facing markdown brief.
 //! - [`handoff`] renders the AI-to-AI packet: eight priority slots filled
 //!   greedily against a token budget.
+//! - [`privacy`] is the deterministic screening boundary every capture must
+//!   pass before it is persisted anywhere (DB, FTS, disk).
 
 pub mod ast;
 pub mod brief;
+pub mod canonical_event;
 pub mod extractor;
 pub mod handoff;
+pub mod memory;
 pub mod ocr;
+pub mod privacy;
 pub mod rules;
+pub mod schema;
+pub mod search;
 
 pub use ast::{analyze_source, SymbolKind, SymbolItem, SymbolicAnalysis};
 pub use ocr::{is_diagram_format, ocr_image_rgba, preserve_diagram, OcrResult};

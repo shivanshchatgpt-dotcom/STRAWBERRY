@@ -247,6 +247,31 @@ pub async fn add_habit(
 
 // ------------------------------------------------------------- events & calendar ----
 
+/// Maps a `SELECT ... FROM events` row (17 columns, see `list_calendar_events`)
+/// into a `CalendarEvent`. Shared by all calendar query sites so the column
+/// list and struct stay in one place.
+fn map_calendar_event_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<CalendarEvent> {
+    Ok(CalendarEvent {
+        id: r.get(0)?,
+        title: r.get(1)?,
+        description: r.get(2)?,
+        start_at: r.get(3)?,
+        end_at: r.get(4)?,
+        timezone: r.get(5)?,
+        category: r.get(6)?,
+        source_url: r.get(7)?,
+        location: r.get(8)?,
+        is_all_day: r.get::<_, i64>(9)? != 0,
+        certificate_offered: r.get::<_, i64>(10)? != 0,
+        registration_required: r.get::<_, i64>(11)? != 0,
+        recurrence: r.get(12)?,
+        recurrence_end: r.get(13)?,
+        color: r.get(14)?,
+        created_at: r.get(15)?,
+        updated_at: r.get(16)?,
+    })
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CalendarEvent {
@@ -262,6 +287,9 @@ pub struct CalendarEvent {
     pub is_all_day: bool,
     pub certificate_offered: bool,
     pub registration_required: bool,
+    pub recurrence: String,
+    pub recurrence_end: Option<String>,
+    pub color: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -288,52 +316,20 @@ pub async fn list_calendar_events(
         let query = match (start_range, end_range) {
             (Some(s), Some(e)) => {
                 let mut stmt = conn.prepare(
-                    "SELECT id, title, description, start_at, end_at, timezone, category, source_url, location, is_all_day, certificate_offered, registration_required, created_at, updated_at
+                    "SELECT id, title, description, start_at, end_at, timezone, category, source_url, location, is_all_day, certificate_offered, registration_required, recurrence, recurrence_end, color, created_at, updated_at
                      FROM events WHERE end_at >= ?1 AND start_at <= ?2 ORDER BY start_at",
                 ).map_err(crate::error::to_string_err("prepare events range"))?;
-                let rows = stmt.query_map(rusqlite::params![s, e], |r| {
-                    Ok(CalendarEvent {
-                        id: r.get(0)?,
-                        title: r.get(1)?,
-                        description: r.get(2)?,
-                        start_at: r.get(3)?,
-                        end_at: r.get(4)?,
-                        timezone: r.get(5)?,
-                        category: r.get(6)?,
-                        source_url: r.get(7)?,
-                        location: r.get(8)?,
-                        is_all_day: r.get::<_, i64>(9)? != 0,
-                        certificate_offered: r.get::<_, i64>(10)? != 0,
-                        registration_required: r.get::<_, i64>(11)? != 0,
-                        created_at: r.get(12)?,
-                        updated_at: r.get(13)?,
-                    })
-                }).map_err(crate::error::to_string_err("map events"))?;
+                let rows = stmt.query_map(rusqlite::params![s, e], map_calendar_event_row)
+                    .map_err(crate::error::to_string_err("map events"))?;
                 rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
             }
             _ => {
                 let mut stmt = conn.prepare(
-                    "SELECT id, title, description, start_at, end_at, timezone, category, source_url, location, is_all_day, certificate_offered, registration_required, created_at, updated_at
+                    "SELECT id, title, description, start_at, end_at, timezone, category, source_url, location, is_all_day, certificate_offered, registration_required, recurrence, recurrence_end, color, created_at, updated_at
                      FROM events ORDER BY start_at",
                 ).map_err(crate::error::to_string_err("prepare events all"))?;
-                let rows = stmt.query_map([], |r| {
-                    Ok(CalendarEvent {
-                        id: r.get(0)?,
-                        title: r.get(1)?,
-                        description: r.get(2)?,
-                        start_at: r.get(3)?,
-                        end_at: r.get(4)?,
-                        timezone: r.get(5)?,
-                        category: r.get(6)?,
-                        source_url: r.get(7)?,
-                        location: r.get(8)?,
-                        is_all_day: r.get::<_, i64>(9)? != 0,
-                        certificate_offered: r.get::<_, i64>(10)? != 0,
-                        registration_required: r.get::<_, i64>(11)? != 0,
-                        created_at: r.get(12)?,
-                        updated_at: r.get(13)?,
-                    })
-                }).map_err(crate::error::to_string_err("map events"))?;
+                let rows = stmt.query_map([], map_calendar_event_row)
+                    .map_err(crate::error::to_string_err("map events"))?;
                 rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
             }
         };
@@ -356,6 +352,9 @@ pub async fn create_calendar_event(
     is_all_day: Option<bool>,
     certificate_offered: Option<bool>,
     registration_required: Option<bool>,
+    recurrence: Option<String>,
+    recurrence_end: Option<String>,
+    color: Option<String>,
     reminder_minutes: Option<Vec<i64>>,
 ) -> Cmd<CalendarEvent> {
     let st = state.inner().clone();
@@ -368,11 +367,12 @@ pub async fn create_calendar_event(
         let all_day = is_all_day.unwrap_or(false);
         let cert = certificate_offered.unwrap_or(false);
         let reg = registration_required.unwrap_or(false);
+        let rec = recurrence.unwrap_or_else(|| "none".into());
         let desc = description.unwrap_or_default();
 
         conn.execute(
-            "INSERT INTO events(id, title, description, start_at, end_at, timezone, category, source_url, location, is_all_day, certificate_offered, registration_required, created_at, updated_at)
-             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?13)",
+            "INSERT INTO events(id, title, description, start_at, end_at, timezone, category, source_url, location, is_all_day, certificate_offered, registration_required, recurrence, recurrence_end, color, created_at, updated_at)
+             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?16)",
             rusqlite::params![
                 id,
                 title.trim(),
@@ -386,6 +386,9 @@ pub async fn create_calendar_event(
                 if all_day { 1 } else { 0 },
                 if cert { 1 } else { 0 },
                 if reg { 1 } else { 0 },
+                rec,
+                recurrence_end,
+                color,
                 now
             ],
         ).map_err(crate::error::to_string_err("insert calendar event"))?;
@@ -413,6 +416,9 @@ pub async fn create_calendar_event(
             is_all_day: all_day,
             certificate_offered: cert,
             registration_required: reg,
+            recurrence: rec,
+            recurrence_end,
+            color,
             created_at: now.clone(),
             updated_at: now,
         })
@@ -431,6 +437,155 @@ pub async fn delete_calendar_event(
         conn.execute("DELETE FROM events WHERE id = ?1", [id])
             .map_err(crate::error::to_string_err("delete calendar event"))?;
         Ok(())
+    })
+    .await
+}
+
+/// Full edit of an existing event. `reminder_minutes`, when provided, replaces
+/// the event's reminder set (NULL keeps the existing reminders untouched).
+#[tauri::command]
+pub async fn update_calendar_event(
+    state: State<'_, Arc<AppState>>,
+    id: String,
+    title: String,
+    description: Option<String>,
+    start_at: String,
+    end_at: String,
+    timezone: Option<String>,
+    category: Option<String>,
+    source_url: Option<String>,
+    location: Option<String>,
+    is_all_day: Option<bool>,
+    certificate_offered: Option<bool>,
+    registration_required: Option<bool>,
+    recurrence: Option<String>,
+    recurrence_end: Option<String>,
+    color: Option<String>,
+    reminder_minutes: Option<Vec<i64>>,
+) -> Cmd<CalendarEvent> {
+    let st = state.inner().clone();
+    super::blocking(st, move |app| {
+        let conn = conn_of(app)?;
+        let now = crate::db::now_iso();
+        let tz = timezone.unwrap_or_else(|| "UTC".into());
+        let cat = category.unwrap_or_else(|| "general".into());
+        let all_day = is_all_day.unwrap_or(false);
+        let cert = certificate_offered.unwrap_or(false);
+        let reg = registration_required.unwrap_or(false);
+        let rec = recurrence.unwrap_or_else(|| "none".into());
+        let desc = description.unwrap_or_default();
+
+        let updated = conn
+            .execute(
+                "UPDATE events SET title=?2, description=?3, start_at=?4, end_at=?5, timezone=?6,
+                        category=?7, source_url=?8, location=?9, is_all_day=?10,
+                        certificate_offered=?11, registration_required=?12,
+                        recurrence=?13, recurrence_end=?14, color=?15, updated_at=?16
+                 WHERE id=?1",
+                rusqlite::params![
+                    id,
+                    title.trim(),
+                    desc,
+                    start_at,
+                    end_at,
+                    tz,
+                    cat,
+                    source_url,
+                    location,
+                    if all_day { 1 } else { 0 },
+                    if cert { 1 } else { 0 },
+                    if reg { 1 } else { 0 },
+                    rec,
+                    recurrence_end,
+                    color,
+                    now
+                ],
+            )
+            .map_err(crate::error::to_string_err("update calendar event"))?;
+        if updated == 0 {
+            return Err(format!("calendar event {id} not found"));
+        }
+
+        if let Some(reminders) = reminder_minutes {
+            conn.execute(
+                "DELETE FROM event_reminders WHERE event_id = ?1",
+                [&id],
+            )
+            .map_err(crate::error::to_string_err("clear event reminders"))?;
+            for m in reminders {
+                let rem_id = format!("rem-{}-{}", id, m);
+                let _ = conn.execute(
+                    "INSERT INTO event_reminders(id, event_id, minutes_before, enabled, triggered) VALUES(?1, ?2, ?3, 1, 0)",
+                    rusqlite::params![rem_id, id, m],
+                );
+            }
+        }
+
+        conn.query_row(
+            "SELECT id, title, description, start_at, end_at, timezone, category, source_url, location, is_all_day, certificate_offered, registration_required, recurrence, recurrence_end, color, created_at, updated_at
+             FROM events WHERE id = ?1",
+            [&id],
+            map_calendar_event_row,
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn list_event_reminders(
+    state: State<'_, Arc<AppState>>,
+    event_id: String,
+) -> Cmd<Vec<EventReminder>> {
+    let st = state.inner().clone();
+    super::blocking(st, move |app| {
+        let conn = conn_of(app)?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, event_id, minutes_before, enabled, triggered
+                 FROM event_reminders WHERE event_id = ?1 ORDER BY minutes_before",
+            )
+            .map_err(crate::error::to_string_err("prepare event reminders"))?;
+        let rows = stmt
+            .query_map([&event_id], |r| {
+                Ok(EventReminder {
+                    id: r.get(0)?,
+                    event_id: r.get(1)?,
+                    minutes_before: r.get(2)?,
+                    enabled: r.get::<_, i64>(3)? != 0,
+                    triggered: r.get::<_, i64>(4)? != 0,
+                })
+            })
+            .map_err(crate::error::to_string_err("map event reminders"))?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
+    })
+    .await
+}
+
+/// Text filter over title / description / category (LIKE %q%).
+#[tauri::command]
+pub async fn search_calendar_events(
+    state: State<'_, Arc<AppState>>,
+    query: String,
+) -> Cmd<Vec<CalendarEvent>> {
+    let st = state.inner().clone();
+    super::blocking(st, move |app| {
+        let conn = conn_of(app)?;
+        let like = format!("%{}%", query.trim());
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, title, description, start_at, end_at, timezone, category, source_url, location, is_all_day, certificate_offered, registration_required, recurrence, recurrence_end, color, created_at, updated_at
+                 FROM events
+                 WHERE title LIKE ?1 OR description LIKE ?1 OR category LIKE ?1
+                 ORDER BY start_at",
+            )
+            .map_err(crate::error::to_string_err("prepare event search"))?;
+        let rows = stmt
+            .query_map(rusqlite::params![like], map_calendar_event_row)
+            .map_err(crate::error::to_string_err("map event search"))?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
     })
     .await
 }
@@ -565,17 +720,25 @@ pub async fn get_daily_briefing(state: State<'_, Arc<AppState>>) -> Cmd<Vec<Brie
             out.push(BriefingSection { key: "habits".into(), title: "🔥 Habits".into(), lines });
         }
 
-        // --- Today's events ---
+        // --- Today's calendar events ---
+        // Uses the canonical `events` table (010/015) instead of the
+        // deprecated `schedule` table (002) which has no UI callers.
+        let start_of_day = format!("{today}T00:00:00Z");
+        let end_of_day = format!("{today}T23:59:59Z");
         let mut sstmt = conn
-            .prepare("SELECT title, start_time FROM schedule WHERE substr(start_time,1,10)=?1 AND completed=0 ORDER BY start_time")
-            .map_err(crate::error::to_string_err("events"))?;
+            .prepare(
+                "SELECT title, start_at FROM events
+                 WHERE start_at >= ?1 AND start_at <= ?2
+                 ORDER BY start_at",
+            )
+            .map_err(crate::error::to_string_err("calendar events"))?;
         let events: Vec<String> = sstmt
-            .query_map([today], |r| {
+            .query_map(rusqlite::params![start_of_day, end_of_day], |r| {
                 let t: String = r.get(0)?;
                 let s: String = r.get(1)?;
                 Ok(format!("{} · {}", &s[11..16], t))
             })
-            .map_err(crate::error::to_string_err("events m"))?
+            .map_err(crate::error::to_string_err("calendar events m"))?
             .filter_map(|r| r.ok())
             .collect();
         if !events.is_empty() {
@@ -608,21 +771,19 @@ pub async fn get_daily_briefing(state: State<'_, Arc<AppState>>) -> Cmd<Vec<Brie
             });
         }
 
-        // --- News (respects app_meta flag; network is opt-in) ---
-        let news_on: Option<String> = conn
-            .query_row("SELECT value FROM app_meta WHERE key='news_enabled'", [], |r| r.get(0))
-            .ok();
-        if news_on.as_deref() == Some("1") {
-            match crate::commands::news::fetch_top_headlines(3) {
-                Ok(headlines) if !headlines.is_empty() => {
-                    out.push(BriefingSection {
-                        key: "news".into(),
-                        title: "📰 Tech news".into(),
-                        lines: headlines,
-                    });
-                }
-                _ => {}
+        // --- News (network is opt-in; graceful degradation on failure) ---
+        // The previous app_meta.news_enabled gate was unreachable (no setter existed).
+        // News fetching now always attempts; it degrades gracefully (empty on failure)
+        // and the fetcher already has an 8s timeout. Network usage is visible in logs.
+        match crate::commands::news::fetch_top_headlines(3) {
+            Ok(headlines) if !headlines.is_empty() => {
+                out.push(BriefingSection {
+                    key: "news".into(),
+                    title: "📰 Tech news".into(),
+                    lines: headlines,
+                });
             }
+            _ => {}
         }
 
         Ok(out)

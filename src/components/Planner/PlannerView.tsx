@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../lib/api";
-import type { planner, ws } from "../../lib/api";
+import type { planner } from "../../lib/api";
 import { useAppStore } from "../../store/appStore";
 import { PreviousWorkPanel } from "./PreviousWorkPanel";
 
@@ -11,7 +11,7 @@ import { PreviousWorkPanel } from "./PreviousWorkPanel";
  * 48h / week / month calendar).
  */
 
-type Panel = "habits" | "focus" | "schedule" | "freeze" | "previous_work";
+type Panel = "habits" | "focus" | "schedule" | "previous_work";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -75,7 +75,6 @@ export function PlannerView() {
               ["focus", "⏱️ Focus"],
               ["schedule", "📅 Schedule"],
               ["previous_work", "⏮️ Previous Work"],
-              ["freeze", "🧊 Freeze"],
             ] as [Panel, string][]
           ).map(([key, label]) => (
             <button
@@ -93,7 +92,6 @@ export function PlannerView() {
       {panel === "focus" && <FocusPanel />}
       {panel === "schedule" && <SchedulePanel />}
       {panel === "previous_work" && <PreviousWorkPanel />}
-      {panel === "freeze" && <FreezePanel />}
     </div>
   );
 }
@@ -748,148 +746,3 @@ function CalendarRow({ ev, onDelete }: { ev: import("../../lib/types").CalendarE
 }
 
 
-/* ══════════════════════════ 🧊 FREEZE & RESUME ══════════════════════════ */
-
-function FreezePanel() {
-  const [list, setList] = useState<ws.WorkSpaceRow[]>([]);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [report, setReport] = useState<{ name: string; rep: ws.RestoreReport } | null>(null);
-  const showToast = useAppStore((s) => s.showToast);
-
-  const refresh = useCallback(async () => {
-    try {
-      setList(await api.listWorkSpaces());
-    } catch {
-      /* silent */
-    }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  const freeze = async () => {
-    setBusy("freeze");
-    try {
-      const space = await api.freezeWorkSpace();
-      showToast("success", `🧊 ${space.name} — ${space.windows.length} windows frozen`);
-      await refresh();
-    } catch (e) {
-      showToast("error", typeof e === "string" ? e : String(e));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const resume = async (id: string, name: string) => {
-    setBusy(id);
-    try {
-      const rep = await api.restoreWorkSpace(id);
-      setReport({ name, rep });
-      showToast("success", `▶ ${name} resumed — ${rep.launched.length} cheezein wapas`);
-    } catch (e) {
-      showToast("error", typeof e === "string" ? e : String(e));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const del = async (id: string) => {
-    try {
-      await api.deleteWorkSpace(id);
-      await refresh();
-    } catch (e) {
-      showToast("error", typeof e === "string" ? e : String(e));
-    }
-  };
-
-  const ago = (iso: string) => {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return iso;
-    const mins = Math.round((Date.now() - d.getTime()) / 60000);
-    if (mins < 1) return "abhi";
-    if (mins < 60) return `${mins}m pehle`;
-    if (mins < 1440) return `${Math.round(mins / 60)}h pehle`;
-    return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
-  };
-
-  return (
-    <div className="planner-body">
-      <section className="panel pad freeze-hero">
-        <div>
-          <div className="section-label">🧊 Freeze &amp; Resume</div>
-          <p className="meta-line">
-            Poora workspace ek click me freeze — windows, tabs, terminals, dev servers.
-            Kal aao, Resume dabao — sab wapas.
-          </p>
-        </div>
-        <button
-          className="btn primary big-btn"
-          onClick={() => void freeze()}
-          disabled={busy === "freeze"}
-        >
-          {busy === "freeze" ? <span className="spinner" /> : "🧊"} Freeze Now
-        </button>
-      </section>
-
-      {report && (
-        <section className="panel pad restore-report">
-          <div className="section-label">▶ Resumed: {report.name}</div>
-          {report.rep.launched.length > 0 && (
-            <ul className="report-list ok">
-              {report.rep.launched.map((l, i) => <li key={i}>✓ {l}</li>)}
-            </ul>
-          )}
-          {report.rep.failed.length > 0 && (
-            <ul className="report-list bad">
-              {report.rep.failed.map((l, i) => <li key={i}>⚠ {l}</li>)}
-            </ul>
-          )}
-          {report.rep.pendingServers.length > 0 && (
-            <>
-              <div className="section-label" style={{ marginTop: 10 }}>⚙️ Dev servers — khud start karo (safe):</div>
-              {report.rep.pendingServers.map((s) => (
-                <div key={s.port} className="server-row">
-                  <span className="mono">:{s.port}</span>
-                  <code>{s.cwd}</code>
-                  <button
-                    className="btn small"
-                    onClick={() => void useAppStore.getState().copyText(`cd "${s.cwd}" && ${s.cmd}`, "restart command")}
-                  >
-                    Copy cmd
-                  </button>
-                </div>
-              ))}
-            </>
-          )}
-        </section>
-      )}
-
-      {list.length === 0 && (
-        <div className="panel pad text-dim">
-          Abhi koi frozen workspace nahi. Upar Freeze Now dabake dekho.
-        </div>
-      )}
-
-      {list.map(([id, name, story, createdAt]) => (
-        <section className="panel pad ws-card" key={id}>
-          <div className="ws-head">
-            <strong>{name}</strong>
-            <span className="dim">{ago(createdAt)}</span>
-          </div>
-          <p className="ws-story">{story}</p>
-          <div className="ws-actions">
-            <button
-              className="btn primary"
-              disabled={busy === id}
-              onClick={() => void resume(id, name)}
-            >
-              {busy === id ? <span className="spinner" /> : "▶"} Resume
-            </button>
-            <button className="btn danger small" onClick={() => void del(id)}>Delete</button>
-          </div>
-        </section>
-      ))}
-    </div>
-  );
-}

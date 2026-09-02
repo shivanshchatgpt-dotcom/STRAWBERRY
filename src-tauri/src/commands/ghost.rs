@@ -53,7 +53,7 @@ pub async fn ghost_record_event(
         let conn = app.conn.lock().map_err(|e| e.to_string())?;
         let ev = match parse_event(&args.event_type) {
             Some(e) => e,
-            None => return Ok(0_i64),
+            None => return Err(format!("Unknown ghost event type: '{}'. Valid types: open_chat, open_folder, open_root, create_chat, create_folder, search, capture, todo_add, todo_done, habit_done, focus_session, tab_visit, note_view, inbox_add", args.event_type)),
         };
         let id = ghost::tracker::record(
             &conn,
@@ -148,8 +148,6 @@ pub async fn ghost_get_snapshot(
         let mut node_rows = conn.prepare(
             "SELECT id, kind, label, weight, color, position_x, position_y FROM ghost_graph_nodes"
         ).map_err(|e| e.to_string())?;
-        let nodes: Vec<Graph> = Vec::new(); // placeholder
-        let _ = nodes;
         let graph_nodes: Vec<crate::ghost::GraphNode> = node_rows.query_map([], |r| {
             Ok(crate::ghost::GraphNode {
                 id: r.get(0)?,
