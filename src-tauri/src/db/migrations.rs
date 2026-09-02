@@ -69,48 +69,15 @@ pub fn run(conn: &mut Connection) -> Result<(), String> {
         (12, MIGRATION_V12),
         (13, MIGRATION_V13),
         (14, MIGRATION_V14),
+        (15, MIGRATION_V15),
+        (16, MIGRATION_V16),
+        (17, MIGRATION_V17),
     ];
 
     for &(version, sql) in migrations {
         if !applied.contains(&version) {
             apply(&tx, version, sql)?;
         }
-    }
-
-    if !applied.contains(&15) {
-        tx.execute_batch(MIGRATION_V15)
-            .map_err(crate::error::to_string_err("migration 015 failed"))?;
-        tx.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (15, ?1)",
-            [crate::db::now_iso()],
-        )
-        .map_err(crate::error::to_string_err(
-            "migration 015 failed to record",
-        ))?;
-    }
-
-    if !applied.contains(&16) {
-        tx.execute_batch(MIGRATION_V16)
-            .map_err(crate::error::to_string_err("migration 016 failed"))?;
-        tx.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (16, ?1)",
-            [crate::db::now_iso()],
-        )
-        .map_err(crate::error::to_string_err(
-            "migration 016 failed to record",
-        ))?;
-    }
-
-    if !applied.contains(&17) {
-        tx.execute_batch(MIGRATION_V17)
-            .map_err(crate::error::to_string_err("migration 017 failed"))?;
-        tx.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (17, ?1)",
-            [crate::db::now_iso()],
-        )
-        .map_err(crate::error::to_string_err(
-            "migration 017 failed to record",
-        ))?;
     }
 
     tx.commit()
