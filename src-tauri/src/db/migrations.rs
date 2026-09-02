@@ -18,7 +18,18 @@ const MIGRATION_V15: &str = include_str!("../../migrations/015_calendar_v2.sql")
 const MIGRATION_V16: &str = include_str!("../../migrations/016_canonical_events.sql");
 const MIGRATION_V17: &str = include_str!("../../migrations/017_unified_memory.sql");
 
-/// Apply pending schema migrations, tracked in `schema_migrations`.
+fn apply(tx: &rusqlite::Transaction<'_>, version: i64, sql: &str) -> Result<(), String> {
+    tx.execute_batch(sql)
+        .map_err(crate::error::to_string_err(&format!("migration {version:03} failed")))?;
+    tx.execute(
+        "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, ?2)",
+        rusqlite::params![version, crate::db::now_iso()],
+    )
+    .map_err(crate::error::to_string_err(&format!("migration {version:03} failed to record")))?;
+    Ok(())
+}
+
+/// Apply pending schema migrations in strict ascending version order.
 pub fn run(conn: &mut Connection) -> Result<(), String> {
     let tx = conn
         .transaction()
@@ -32,183 +43,38 @@ pub fn run(conn: &mut Connection) -> Result<(), String> {
     )
     .map_err(crate::error::to_string_err("failed to create schema_migrations"))?;
 
-    let applied: Vec<i64> = {
+    let applied: std::collections::HashSet<i64> = {
         let mut stmt = tx
-            .prepare("SELECT version FROM schema_migrations ORDER BY version")
+            .prepare("SELECT version FROM schema_migrations")
             .map_err(crate::error::to_string_err("failed to read migrations"))?;
         let rows = stmt
             .query_map([], |r| r.get::<_, i64>(0))
             .map_err(crate::error::to_string_err("failed to read migrations"))?;
-        rows.collect::<Result<Vec<_>, _>>()
+        rows.collect::<Result<_, _>>()
             .map_err(crate::error::to_string_err("failed to read migrations"))?
     };
 
-    if !applied.contains(&1) {
-        tx.execute_batch(MIGRATION_V1)
-            .map_err(crate::error::to_string_err("migration 001 failed"))?;
-        tx.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (1, ?1)",
-            [crate::db::now_iso()],
-        )
-        .map_err(crate::error::to_string_err(
-            "migration 001 failed to record",
-        ))?;
-    }
+    let migrations: &[(i64, &str)] = &[
+        (1, MIGRATION_V1),
+        (2, MIGRATION_V2),
+        (3, MIGRATION_V3),
+        (4, MIGRATION_V4),
+        (5, MIGRATION_V5),
+        (6, MIGRATION_V6),
+        (7, MIGRATION_V7),
+        (8, MIGRATION_V8),
+        (9, MIGRATION_V9),
+        (10, MIGRATION_V10),
+        (11, MIGRATION_V11),
+        (12, MIGRATION_V12),
+        (13, MIGRATION_V13),
+        (14, MIGRATION_V14),
+    ];
 
-    if !applied.contains(&2) {
-        tx.execute_batch(MIGRATION_V2)
-            .map_err(crate::error::to_string_err("migration 002 failed"))?;
-        tx.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (2, ?1)",
-            [crate::db::now_iso()],
-        )
-        .map_err(crate::error::to_string_err(
-            "migration 002 failed to record",
-        ))?;
-    }
-
-    if !applied.contains(&3) {
-        tx.execute_batch(MIGRATION_V3)
-            .map_err(crate::error::to_string_err("migration 003 failed"))?;
-        tx.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (3, ?1)",
-            [crate::db::now_iso()],
-        )
-        .map_err(crate::error::to_string_err(
-            "migration 003 failed to record",
-        ))?;
-    }
-
-    if !applied.contains(&4) {
-        tx.execute_batch(MIGRATION_V4)
-            .map_err(crate::error::to_string_err("migration 004 failed"))?;
-        tx.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (4, ?1)",
-            [crate::db::now_iso()],
-        )
-        .map_err(crate::error::to_string_err(
-            "migration 004 failed to record",
-        ))?;
-    }
-
-    if !applied.contains(&5) {
-        tx.execute_batch(MIGRATION_V5)
-            .map_err(crate::error::to_string_err("migration 005 failed"))?;
-        tx.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (5, ?1)",
-            [crate::db::now_iso()],
-        )
-        .map_err(crate::error::to_string_err(
-            "migration 005 failed to record",
-        ))?;
-    }
-
-    if !applied.contains(&6) {
-        tx.execute_batch(MIGRATION_V6)
-            .map_err(crate::error::to_string_err("migration 006 failed"))?;
-        tx.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (6, ?1)",
-            [crate::db::now_iso()],
-        )
-        .map_err(crate::error::to_string_err(
-            "migration 006 failed to record",
-        ))?;
-    }
-
-    if !applied.contains(&8) {
-        tx.execute_batch(MIGRATION_V8)
-            .map_err(crate::error::to_string_err("migration 008 failed"))?;
-        tx.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (8, ?1)",
-            [crate::db::now_iso()],
-        )
-        .map_err(crate::error::to_string_err(
-            "migration 008 failed to record",
-        ))?;
-    }
-
-    if !applied.contains(&7) {
-        tx.execute_batch(MIGRATION_V7)
-            .map_err(crate::error::to_string_err("migration 007 failed"))?;
-        tx.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (7, ?1)",
-            [crate::db::now_iso()],
-        )
-        .map_err(crate::error::to_string_err(
-            "migration 007 failed to record",
-        ))?;
-    }
-
-    if !applied.contains(&9) {
-        tx.execute_batch(MIGRATION_V9)
-            .map_err(crate::error::to_string_err("migration 009 failed"))?;
-        tx.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (9, ?1)",
-            [crate::db::now_iso()],
-        )
-        .map_err(crate::error::to_string_err(
-            "migration 009 failed to record",
-        ))?;
-    }
-
-    if !applied.contains(&10) {
-        tx.execute_batch(MIGRATION_V10)
-            .map_err(crate::error::to_string_err("migration 010 failed"))?;
-        tx.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (10, ?1)",
-            [crate::db::now_iso()],
-        )
-        .map_err(crate::error::to_string_err(
-            "migration 010 failed to record",
-        ))?;
-    }
-
-    if !applied.contains(&11) {
-        tx.execute_batch(MIGRATION_V11)
-            .map_err(crate::error::to_string_err("migration 011 failed"))?;
-        tx.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (11, ?1)",
-            [crate::db::now_iso()],
-        )
-        .map_err(crate::error::to_string_err(
-            "migration 011 failed to record",
-        ))?;
-    }
-
-    if !applied.contains(&12) {
-        tx.execute_batch(MIGRATION_V12)
-            .map_err(crate::error::to_string_err("migration 012 failed"))?;
-        tx.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (12, ?1)",
-            [crate::db::now_iso()],
-        )
-        .map_err(crate::error::to_string_err(
-            "migration 012 failed to record",
-        ))?;
-    }
-
-    if !applied.contains(&13) {
-        tx.execute_batch(MIGRATION_V13)
-            .map_err(crate::error::to_string_err("migration 013 failed"))?;
-        tx.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (13, ?1)",
-            [crate::db::now_iso()],
-        )
-        .map_err(crate::error::to_string_err(
-            "migration 013 failed to record",
-        ))?;
-    }
-
-    if !applied.contains(&14) {
-        tx.execute_batch(MIGRATION_V14)
-            .map_err(crate::error::to_string_err("migration 014 failed"))?;
-        tx.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (14, ?1)",
-            [crate::db::now_iso()],
-        )
-        .map_err(crate::error::to_string_err(
-            "migration 014 failed to record",
-        ))?;
+    for &(version, sql) in migrations {
+        if !applied.contains(&version) {
+            apply(&tx, version, sql)?;
+        }
     }
 
     if !applied.contains(&15) {
@@ -310,7 +176,6 @@ pub fn ensure_fts(conn: &Connection) -> Result<bool, String> {
         END;
     ";
     if conn.execute_batch(triggers).is_err() {
-        // FTS table exists but triggers failed; drop FTS to stay consistent.
         let _ = conn.execute_batch("DROP TABLE IF EXISTS chat_fts;");
         set_fts_flag(conn, false)?;
         return Ok(false);
@@ -637,3 +502,4 @@ mod tests {
         assert_eq!(hit.as_deref(), Some("c"), "FTS should find the chat");
     }
 }
+=======
