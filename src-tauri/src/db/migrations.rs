@@ -17,6 +17,10 @@ const MIGRATION_V14: &str = include_str!("../../migrations/014_ghost.sql");
 const MIGRATION_V15: &str = include_str!("../../migrations/015_calendar_v2.sql");
 const MIGRATION_V16: &str = include_str!("../../migrations/016_canonical_events.sql");
 const MIGRATION_V17: &str = include_str!("../../migrations/017_unified_memory.sql");
+const MIGRATION_V18: &str = include_str!("../../migrations/018_wellness_seconds.sql");
+const MIGRATION_V19: &str = include_str!("../../migrations/019_capability_ledger.sql");
+const MIGRATION_V20: &str = include_str!("../../migrations/020_ledger_hardening.sql");
+const MIGRATION_V21: &str = include_str!("../../migrations/021_docx.sql");
 
 fn apply(tx: &rusqlite::Transaction<'_>, version: i64, sql: &str) -> Result<(), String> {
     tx.execute_batch(sql)
@@ -72,6 +76,10 @@ pub fn run(conn: &mut Connection) -> Result<(), String> {
         (15, MIGRATION_V15),
         (16, MIGRATION_V16),
         (17, MIGRATION_V17),
+        (18, MIGRATION_V18),
+        (19, MIGRATION_V19),
+        (20, MIGRATION_V20),
+        (21, MIGRATION_V21),
     ];
 
     for &(version, sql) in migrations {
@@ -278,7 +286,7 @@ mod tests {
         let versions: i64 = conn
             .query_row("SELECT count(*) FROM schema_migrations", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(versions, 17);
+        assert_eq!(versions, 21);
     }
 
     /// Full migration chain produces all critical tables, indexes, and triggers.

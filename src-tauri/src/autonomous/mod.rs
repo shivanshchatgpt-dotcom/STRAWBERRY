@@ -36,12 +36,40 @@ pub mod event;
 pub mod adapter;
 pub mod file_watcher;
 pub mod session;
+pub mod capability;
+pub mod scheduler;
+pub mod context;
+pub mod orchestrator;
+pub mod goal;
+pub mod planner;
+pub mod safety;
+pub mod executor;
+pub mod verifier;
+pub mod replanner;
+pub mod lifecycle;
+pub mod ledger;
+pub mod ai_validation;
+pub mod skills;
+pub mod learning;
+pub mod prediction;
+pub mod intelligence_gate;
+pub mod priority;
+pub mod intent;
+#[cfg(test)]
+mod wiring_tests;
+#[cfg(test)]
+mod hardening_audits;
+#[cfg(test)]
+mod perf_audits;
 
 pub use world_state::{WorldState, WorldStateDiff, WorldStateVersion};
 pub use runtime::{AutonomyRuntime, RuntimeMode, RuntimeStats};
 pub use cycle::{AutonomyCycle, CycleResult, CycleOutcome};
 pub use event::{NormalizedEvent, EventKind, EventBus};
 pub use adapter::{SourceAdapter, RawSignal, AdapterInfo};
+pub use capability::{CapabilityDef, CapabilityState, Registry, MANIFEST};
+pub use scheduler::{Scheduler, SchedContext, Verdict, Decision};
+pub use orchestrator::Orchestrator;
 
 /// Strongly-typed identifiers used across the autonomy stack.
 pub mod ids {

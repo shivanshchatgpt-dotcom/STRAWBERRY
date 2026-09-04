@@ -1,26 +1,40 @@
+import { useState } from "react";
 import { useAppStore } from "../../store/appStore";
-import type { SearchScopeKind } from "../../lib/types";
-import { Breadcrumb } from "../Breadcrumb/Breadcrumb";
 import { EmptyState } from "../EmptyState/EmptyState";
 import { TreePanel } from "../Tree/TreePanel";
 import { formatDate } from "../../lib/utils";
-import { ScopePicker } from "./SearchBox";
+
+/**
+ * Unified search results — one list across every entity Strawberry stores:
+ * 💬 chats · 📋 todos · 🔥 habits · 📅 events · 👻 insights · 🎯 alpha hits.
+ * Chat results open the reader; everything else is shown inline.
+ */
+
+const KIND_TABS: { key: string; label: string; emoji: string }[] = [
+  { key: "all", label: "All", emoji: "✳️" },
+  { key: "chat", label: "Chats", emoji: "💬" },
+  { key: "todo", label: "Tasks", emoji: "📋" },
+  { key: "habit", label: "Habits", emoji: "🔥" },
+  { key: "event", label: "Events", emoji: "📅" },
+  { key: "insight", label: "Insights", emoji: "👻" },
+  { key: "alpha", label: "Alpha", emoji: "🎯" },
+];
 
 export function SearchResultsView() {
   const results = useAppStore((s) => s.searchResults);
   const searching = useAppStore((s) => s.searching);
   const query = useAppStore((s) => s.searchQuery.trim());
-  const searchScope = useAppStore((s) => s.searchScope);
-  const setSearchScope = useAppStore((s) => s.setSearchScope);
   const openChat = useAppStore((s) => s.openChat);
+  const [tab, setTab] = useState<string>("all");
 
-  const scopeKind: SearchScopeKind = searchScope?.kind ?? "global";
+  const counts = new Map<string, number>();
+  for (const r of results ?? []) counts.set(r.kind, (counts.get(r.kind) ?? 0) + 1);
+  const shown = tab === "all" ? results ?? [] : (results ?? []).filter((r) => r.kind === tab);
 
   return (
     <>
       <TreePanel />
       <div className="content">
-        <Breadcrumb />
         <div className="page-head">
           <div>
             <h1>Search</h1>
@@ -34,38 +48,54 @@ export function SearchResultsView() {
           </div>
         </div>
 
-        <div className="scope-row">
-          <label htmlFor="scope-select">Scope:</label>
-          <ScopePicker
-            value={scopeKind}
-            onChange={(kind, id, label) =>
-              setSearchScope({ kind, id, label })
-            }
-          />
+        <div className="unified-search-tabs">
+          {KIND_TABS.map((t) => {
+            const n = t.key === "all" ? results?.length ?? 0 : counts.get(t.key) ?? 0;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                className={`unified-tab${tab === t.key ? " active" : ""}`}
+                onClick={() => setTab(t.key)}
+              >
+                {t.emoji} {t.label}
+                {n > 0 && <em> {n}</em>}
+              </button>
+            );
+          })}
         </div>
 
         {!searching && results && results.length === 0 ? (
           <EmptyState
             icon="🔍"
             title={`No matches for “${query}”`}
-            hint="Try a different keyword or widen the scope. Search covers chat titles, first ideas, tags and brief text."
+            hint="Search covers chats, tasks, habits, calendar events, ghost insights and alpha candidates. Try another keyword."
           />
         ) : (
           <div className="result-list">
-            {results?.map((r) => (
+            {shown.map((r, i) => (
               <button
-                key={r.chatId}
+                key={`${r.kind}-${r.entityId}-${i}`}
                 className="result-item"
-                onClick={() => void openChat(r.chatId)}
+                onClick={() => {
+                  if (r.kind === "chat") void openChat(r.entityId);
+                }}
               >
                 <div className="result-path">
-                  {[r.rootName, r.folderPath].filter(Boolean).join(" / ")} ·{" "}
-                  {formatDate(r.createdAt)}
+                  <span className="result-kind-badge">{r.emoji}</span>
+                  {r.location || r.kind} · {formatDate(r.createdAt)}
                 </div>
                 <div className="result-title">{r.title}</div>
                 {r.snippet && <div className="result-snippet">{r.snippet}</div>}
               </button>
             ))}
+            {shown.length === 0 && results && results.length > 0 && (
+              <EmptyState
+                icon="🫙"
+                title="No results of this kind"
+                hint="Switch back to the All tab to see matches from other content types."
+              />
+            )}
           </div>
         )}
       </div>

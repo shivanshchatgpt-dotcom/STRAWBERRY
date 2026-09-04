@@ -158,6 +158,25 @@ pub struct SearchResultItem {
     pub created_at: String,
 }
 
+/// One hit from the unified "search everything" command.
+/// `kind` tells the UI which table / entity the hit came from
+/// (chat | todo | habit | event | insight | alpha) and `entity_id`
+/// is that table's primary key so the UI can open or highlight it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnifiedSearchItem {
+    pub kind: String,
+    pub entity_id: String,
+    pub title: String,
+    pub snippet: String,
+    /// Where the hit lives, e.g. "School / Physics" for a chat,
+    /// "Todos", "Habits", "Calendar".
+    pub location: String,
+    /// Emoji for the entity kind, purely presentational.
+    pub emoji: String,
+    pub created_at: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppInfo {

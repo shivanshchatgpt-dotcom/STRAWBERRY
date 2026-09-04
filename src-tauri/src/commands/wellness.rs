@@ -19,7 +19,7 @@ pub struct WellnessStateDto {
 pub struct WellnessConfigDto {
     pub category: String,
     pub enabled: bool,
-    pub interval_minutes: i64,
+    pub interval_seconds: i64,
     pub last_reminded_at: Option<String>,
 }
 
@@ -28,7 +28,7 @@ pub struct WellnessConfigDto {
 pub struct SetCategoryArgs {
     pub category: String,
     pub enabled: bool,
-    pub interval_minutes: i64,
+    pub interval_seconds: i64,
 }
 
 #[tauri::command]
@@ -58,14 +58,14 @@ pub async fn wellness_get_config(_agent: State<'_, Arc<Mutex<WellnessAgent>>>, a
     Ok(configs.into_iter().map(|c| WellnessConfigDto {
         category: c.category,
         enabled: c.enabled,
-        interval_minutes: c.interval_minutes,
+        interval_seconds: c.interval_seconds,
         last_reminded_at: c.last_reminded_at,
     }).collect())
 }
 
 #[tauri::command]
 pub async fn wellness_set_category(_agent: State<'_, Arc<Mutex<WellnessAgent>>>, app: AppHandle, args: SetCategoryArgs) -> Cmd<()> {
-    WellnessAgent::set_category(&app, args.category, args.enabled, args.interval_minutes)
+    WellnessAgent::set_category(&app, args.category, args.enabled, args.interval_seconds)
 }
 
 #[tauri::command]
@@ -76,5 +76,30 @@ pub async fn wellness_record_activity(_agent: State<'_, Arc<Mutex<WellnessAgent>
 #[tauri::command]
 pub async fn wellness_dismiss(agent: State<'_, Arc<Mutex<WellnessAgent>>>, app: AppHandle) -> Cmd<()> {
     WellnessAgent::dismiss(agent.inner(), &app);
+    Ok(())
+}
+
+/// Fire a reminder popup immediately so the user can verify the whole
+/// pipeline (Rust → event → frontend overlay) without waiting out an interval.
+#[tauri::command]
+pub async fn wellness_test_popup(app: AppHandle, category: Option<String>) -> Cmd<()> {
+    use tauri::Emitter;
+    let cat = category.unwrap_or_else(|| "blink".to_string());
+    let (emoji, title, message) = match cat.as_str() {
+        "water" => ("💧", "💧 Drink some water", "Test reminder — pipeline working."),
+        "stretch" => ("🧍", "🧍 Stand & stretch", "Test reminder — pipeline working."),
+        "posture" => ("🪴", "🪴 Posture check", "Test reminder — pipeline working."),
+        "eyes" => ("👁️", "👁️ Eye break", "Test reminder — pipeline working."),
+        "meal" => ("🍴", "🍴 Meal / snack", "Test reminder — pipeline working."),
+        _ => ("👀", "👀 Blink your eyes", "Test reminder — pipeline working."),
+    };
+    let reminder = crate::wellness::WellnessReminder {
+        category: cat,
+        title: title.to_string(),
+        message: message.to_string(),
+        emoji: emoji.to_string(),
+        duration_secs: 5,
+    };
+    let _ = app.emit("wellness:popup", reminder);
     Ok(())
 }

@@ -1,13 +1,17 @@
 //! 🤖 Tauri commands exposing the Autonomous Runtime to the frontend.
 
+use std::sync::Arc;
+
 use tauri::State;
 use serde::{Deserialize, Serialize};
 use crate::autonomous::{
     AutonomyRuntime, EventKind, EventBus, NormalizedEvent, RuntimeMode, RuntimeStats,
-    WorldState, CycleResult,
+    WorldState, CycleResult, CapabilityState, Registry,
 };
+use crate::state::AppState;
+use crate::error;
 
-use super::Cmd;
+use super::{blocking, Cmd};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -144,4 +148,164 @@ fn event_from_json(kind: &str, data: serde_json::Value) -> Result<NormalizedEven
         _ => return Err(format!("unknown event kind: {kind}")),
     };
     Ok(NormalizedEvent::new(ek))
+}
+
+// ---------------------------------------------------------------------------
+// Capability Registry + Adaptive Scheduler + Decision Ledger (Phase 6)
+// ---------------------------------------------------------------------------
+
+/// Append-only audit ledger entry for the explainability requirement.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LedgerEntry {
+    pub id: i64,
+    pub capability_id: String,
+    pub decision: String,
+    pub reason: String,
+    pub score: Option<f64>,
+    pub created_at: String,
+}
+
+/// List the capability registry with effective (override-applied) state.
+#[tauri::command]
+pub async fn list_capabilities(
+    state: State<'_, Arc<AppState>>,
+) -> Cmd<Vec<CapabilityState>> {
+    let st = state.inner().clone();
+    blocking(st, move |app| {
+        let conn = app.conn.lock().map_err(|_| error::ERR_DB_LOCK.to_string())?;
+        Registry::load(&conn)
+    })
+    .await
+}
+
+/// Toggle a capability (persisted to capability_state + logged).
+#[tauri::command]
+pub async fn set_capability_enabled(
+    state: State<'_, Arc<AppState>>,
+    capability_id: String,
+    enabled: bool,
+) -> Cmd<()> {
+    let st = state.inner().clone();
+    blocking(st, move |app| {
+        let conn = app.conn.lock().map_err(|_| error::ERR_DB_LOCK.to_string())?;
+        crate::autonomous::capability::def(&capability_id)
+            .ok_or_else(|| format!("unknown capability: {capability_id}"))?;
+        let reason = if enabled {
+            "enabled by user".to_string()
+        } else {
+            "disabled by user".to_string()
+        };
+        Registry::set_enabled(&conn, &capability_id, enabled, &reason)?;
+        crate::autonomous::scheduler::Scheduler::log(
+            &conn,
+            &capability_id,
+            if enabled { "resume" } else { "pause" },
+            &reason,
+            None,
+        );
+        Ok(())
+    })
+    .await
+}
+
+/// Override a capability's interval (persisted + logged).
+#[tauri::command]
+pub async fn set_capability_interval(
+    state: State<'_, Arc<AppState>>,
+    capability_id: String,
+    interval_secs: u64,
+) -> Cmd<()> {
+    let st = state.inner().clone();
+    blocking(st, move |app| {
+        let conn = app.conn.lock().map_err(|_| error::ERR_DB_LOCK.to_string())?;
+        crate::autonomous::capability::def(&capability_id)
+            .ok_or_else(|| format!("unknown capability: {capability_id}"))?;
+        let reason = format!("interval set to {interval_secs}s by user");
+        Registry::set_interval(&conn, &capability_id, interval_secs, &reason)?;
+        crate::autonomous::scheduler::Scheduler::log(
+            &conn,
+            &capability_id,
+            "interval",
+            &reason,
+            None,
+        );
+        Ok(())
+    })
+    .await
+}
+
+// ---------------------------------------------------------------------------
+// Goal Engine (Phase 7) — deterministic, evidence-backed candidates
+// ---------------------------------------------------------------------------
+
+/// Read-only: generate goal candidates from existing storage.
+#[tauri::command]
+pub async fn get_goal_candidates(
+    state: State<'_, Arc<AppState>>,
+) -> Cmd<Vec<crate::autonomous::goal::GoalCandidate>> {
+    let st = state.inner().clone();
+    blocking(st, move |app| {
+        let conn = app.conn.lock().map_err(|_| error::ERR_DB_LOCK.to_string())?;
+        crate::autonomous::goal::generate(&conn)
+    })
+    .await
+}
+
+/// Read-only: plan every generated goal candidate (Phase 8). Plans are
+/// generation-based — no persistence, no execution, pure computation.
+#[tauri::command]
+pub async fn get_plans(
+    state: State<'_, Arc<AppState>>,
+) -> Cmd<Vec<serde_json::Value>> {
+    let st = state.inner().clone();
+    blocking(st, move |app| {
+        let conn = app.conn.lock().map_err(|_| error::ERR_DB_LOCK.to_string())?;
+        let goals = crate::autonomous::goal::generate(&conn)?;
+        let out = goals
+            .into_iter()
+            .map(|g| {
+                use crate::autonomous::planner::{plan as plan_goal, Planned};
+                match plan_goal(&g) {
+                    Planned::Plan(p) => serde_json::json!({ "kind": "plan", "value": p }),
+                    Planned::Rejected(r) => serde_json::json!({ "kind": "rejected", "value": r }),
+                }
+            })
+            .collect::<Vec<_>>();
+        Ok(out)
+    })
+    .await
+}
+
+/// Read the decision ledger (newest first).
+#[tauri::command]
+pub async fn get_capability_ledger(
+    state: State<'_, Arc<AppState>>,
+    limit: Option<u32>,
+) -> Cmd<Vec<LedgerEntry>> {
+    let st = state.inner().clone();
+    blocking(st, move |app| {
+        let conn = app.conn.lock().map_err(|_| error::ERR_DB_LOCK.to_string())?;
+        let limit = limit.unwrap_or(100).clamp(1, 500) as i64;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, capability_id, decision, reason, score, created_at
+                 FROM autonomy_decisions ORDER BY id DESC LIMIT ?1",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([limit], |r| {
+                Ok(LedgerEntry {
+                    id: r.get(0)?,
+                    capability_id: r.get(1)?,
+                    decision: r.get(2)?,
+                    reason: r.get(3)?,
+                    score: r.get(4)?,
+                    created_at: r.get(5)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+    })
+    .await
 }

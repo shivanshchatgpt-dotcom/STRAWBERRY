@@ -3,9 +3,11 @@ mod autonomous;
 mod brief;
 mod commands;
 mod db;
+mod docx;
 mod error;
 mod ghost;
 mod intelligence;
+mod project;
 mod resume;
 mod screen;
 mod snapshot;
@@ -77,23 +79,44 @@ pub fn run() {
                 }
             });
 
-            // 👻 Spawn the Ghost: every 5 minutes, rebuild graph + regenerate insights.
-            // Uses its own SQLite connection to avoid blocking the AppState lock
-            // (which would freeze every other command for the duration of the rebuild).
+            // 👻 Spawn the Ghost: rebuild graph + regenerate insights on the
+            // CENTRAL scheduler's cadence (capability: ghost_insights).
+            // Uses its own SQLite connection to avoid blocking the AppState
+            // lock (which would freeze every other command for the duration
+            // of the rebuild).
             let ghost_state = app.state::<Arc<AppState>>().inner().clone();
             let ghost_shutdown = Arc::new(AtomicBool::new(false));
             let ghost_db_path = ghost_state.db_path();
             let ghost_shutdown_thread = ghost_shutdown.clone();
+            let ghost_orch = Arc::new(autonomous::Orchestrator::new());
             std::thread::spawn(move || {
+                let orch = ghost_orch;
                 while !ghost_shutdown_thread.load(std::sync::atomic::Ordering::Relaxed) {
-                    // Sleep 5 minutes in 1-second steps so shutdown is responsive.
-                    for _ in 0..300 {
+                    // Adaptive interval from the scheduler (user override +
+                    // system pressure aware), slept in 1-second steps so
+                    // shutdown stays responsive.
+                    let wait_secs = {
+                        match rusqlite::Connection::open(&ghost_db_path) {
+                            Ok(gc) => orch.effective_interval_secs(&gc, "ghost_insights", 0),
+                            Err(_) => 300,
+                        }
+                    };
+                    for _ in 0..wait_secs.max(1) {
                         if ghost_shutdown_thread.load(std::sync::atomic::Ordering::Relaxed) {
                             return;
                         }
                         std::thread::sleep(std::time::Duration::from_secs(1));
                     }
-                    let _ = ghost::run_cycle_offline(&ghost_db_path, &ghost_shutdown_thread);
+                    // Scheduler gate: registry state + live system context.
+                    let proceed = {
+                        match rusqlite::Connection::open(&ghost_db_path) {
+                            Ok(gc) => orch.gate(&gc, "ghost_insights", 0.6, 0, 3).proceed,
+                            Err(_) => true,
+                        }
+                    };
+                    if proceed {
+                        let _ = ghost::run_cycle_offline(&ghost_db_path, &ghost_shutdown_thread);
+                    }
                 }
             });
 
@@ -130,6 +153,19 @@ pub fn run() {
             commands::handoff::export_handoff,
             commands::handoff::handoff_from_text,
             commands::search::search_chats,
+            commands::search::search_all,
+            commands::dbview::get_db_overview,
+            commands::docx::docx_list,
+            commands::docx::docx_new,
+            commands::docx::docx_open,
+            commands::docx::docx_save,
+            commands::docx::docx_delete,
+            commands::docx::docx_parse_paste,
+            commands::docx::docx_search,
+            commands::docx::docx_export,
+            commands::project::get_project_brain,
+            commands::project::get_what_changed,
+            commands::project::get_intelligent_resume,
             commands::planner::get_todos,
             commands::planner::add_todo,
             commands::planner::toggle_todo,
@@ -197,6 +233,7 @@ pub fn run() {
             commands::wellness::wellness_set_category,
             commands::wellness::wellness_record_activity,
             commands::wellness::wellness_dismiss,
+            commands::wellness::wellness_test_popup,
             commands::ghost::ghost_record_event,
             commands::ghost::ghost_rebuild_graph,
             commands::ghost::ghost_regenerate_insights,
@@ -210,6 +247,12 @@ pub fn run() {
             commands::autonomy::autonomy_shutdown,
             commands::autonomy::autonomy_run_cycle,
             commands::autonomy::autonomy_publish,
+            commands::autonomy::list_capabilities,
+            commands::autonomy::set_capability_enabled,
+            commands::autonomy::set_capability_interval,
+            commands::autonomy::get_capability_ledger,
+            commands::autonomy::get_goal_candidates,
+            commands::autonomy::get_plans,
             commands::ambient::record_ambient_event,
             commands::ambient::get_ambient_events,
             commands::ambient::analyze_code_ast,

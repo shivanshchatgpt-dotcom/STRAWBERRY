@@ -54,6 +54,11 @@ export function AutonomyPanel() {
   const [snap, setSnap] = useState<autonomy.RuntimeSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [caps, setCaps] = useState<autonomy.CapabilityState[]>([]);
+  const [ledger, setLedger] = useState<autonomy.LedgerEntry[]>([]);
+  const [goals, setGoals] = useState<autonomy.GoalCandidate[]>([]);
+  const [plans, setPlans] = useState<autonomy.PlannedResult[]>([]);
+  const [showLedger, setShowLedger] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -65,11 +70,49 @@ export function AutonomyPanel() {
     }
   }, []);
 
+  const refreshCaps = useCallback(async () => {
+    try {
+      const [c, l, g, pl] = await Promise.all([
+        api.listCapabilities(),
+        api.getCapabilityLedger(30),
+        api.getGoalCandidates(),
+        api.getPlans(),
+      ]);
+      setCaps(c);
+      setLedger(l);
+      setGoals(g);
+      setPlans(pl);
+    } catch {
+      /* silent */
+    }
+  }, []);
+
   useEffect(() => {
     void refresh();
+    void refreshCaps();
     const t = setInterval(() => void refresh(), 2000);
     return () => clearInterval(t);
-  }, [refresh]);
+  }, [refresh, refreshCaps]);
+
+  const toggleCap = async (id: string, enabled: boolean) => {
+    setBusy(true);
+    try {
+      await api.setCapabilityEnabled(id, enabled);
+      await refreshCaps();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const setCapInterval = async (id: string, secs: number) => {
+    setBusy(true);
+    try {
+      await api.setCapabilityInterval(id, secs);
+      await refreshCaps();
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const start = async () => { setBusy(true); try { await api.autonomyStart(); await refresh(); } finally { setBusy(false); } };
   const pause = async () => { setBusy(true); try { await api.autonomyPause(); await refresh(); } finally { setBusy(false); } };
@@ -202,6 +245,130 @@ export function AutonomyPanel() {
           <button className="btn" onClick={() => void demoFile()}>📄 Open file</button>
           <button className="btn" onClick={() => void demoError()}>❌ Error</button>
         </div>
+      </div>
+
+      {/* ── Goal Engine — deterministic candidates from real evidence ── */}
+      <div className="goal-engine">
+        <h4 className="panel-title" style={{ fontSize: 12, margin: "12px 0 6px", textTransform: "uppercase", letterSpacing: 0.5 }}>
+          🎯 Goal candidates ({goals.length})
+        </h4>
+        {goals.length === 0 && (
+          <p className="text-dim" style={{ fontSize: 11.5 }}>
+            Koi evidence-backed goal nahi — task/error/resume se derive hote hain.
+          </p>
+        )}
+        <ul className="goal-list">
+          {goals.slice(0, 6).map((g) => (
+            <li key={g.goalId} className={`goal-row prio-${g.priority}${g.status !== "candidate" ? " inactive" : ""}`}>
+              <span className="goal-title" title={g.description}>{g.title}</span>
+              <span className="goal-project">{g.project ?? "—"}</span>
+              <span className="goal-conf" title="confidence">{(g.confidence * 100).toFixed(0)}%</span>
+              <span className={`goal-status s-${g.status}`}>{g.status}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* ── Planner — deterministic non-executing plans (Phase 8) ── */}
+      {plans.length > 0 && (
+        <div className="plan-engine">
+          <h4 className="panel-title" style={{ fontSize: 12, margin: "12px 0 6px", textTransform: "uppercase", letterSpacing: 0.5 }}>
+            🗺️ Plans ({plans.filter((p) => p.kind === "plan").length} · {plans.filter((p) => p.kind === "rejected").length} rejected)
+          </h4>
+          <ul className="plan-list">
+            {plans.slice(0, 4).map((r, i) => (
+              <li key={i} className="plan-row">
+                {r.kind === "plan" ? (
+                  <>
+                    <span className="plan-title">{r.value.title}</span>
+                    <span className="plan-meta">
+                      {r.value.steps.length} steps · cost {r.value.estimatedCost} · conf {(r.value.confidence * 100).toFixed(0)}%
+                    </span>
+                    <ol className="plan-steps">
+                      {r.value.steps.slice(0, 4).map((s) => (
+                        <li key={s.stepId} title={s.purpose}>
+                          {s.action === "requires_approval" ? "🔒" : s.action === "prepare" ? "🧰" : "🔍"}{" "}
+                          {s.capability} — {s.expectedResult}
+                        </li>
+                      ))}
+                    </ol>
+                  </>
+                ) : (
+                  <>
+                    <span className="plan-title dim">✖ {r.value.reason}</span>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* ── Capability Registry — the ONE catalog the scheduler serves ── */}
+      <div className="cap-registry">
+        <h4 className="panel-title" style={{ fontSize: 12, margin: "12px 0 6px", textTransform: "uppercase", letterSpacing: 0.5 }}>
+          🧩 Capabilities ({caps.filter((c) => c.enabled).length}/{caps.length} on)
+        </h4>
+        <ul className="cap-list">
+          {caps.map((c) => (
+            <li key={c.id} className={`cap-row${c.enabled ? "" : " off"}`}>
+              <label className="cap-toggle">
+                <input
+                  type="checkbox"
+                  checked={c.enabled}
+                  disabled={busy}
+                  onChange={(e) => void toggleCap(c.id, e.target.checked)}
+                />
+              </label>
+              <div className="cap-meta">
+                <span className="cap-name">{c.name}</span>
+                <span className="cap-goal">{c.goal}</span>
+              </div>
+              <span className={`cap-risk risk-${c.risk}`} title={`risk: ${c.risk}`}>
+                {c.risk === "low" ? "🟢" : c.risk === "medium" ? "🟡" : c.risk === "high" ? "🔴" : "⛔"}
+              </span>
+              <span className="cap-layer">{c.layer}</span>
+              {c.defaultIntervalSecs > 0 && (
+                <select
+                  className="cap-interval"
+                  value={c.intervalSecs}
+                  disabled={busy || !c.enabled}
+                  onChange={(e) => void setCapInterval(c.id, Number(e.target.value))}
+                  title="cadence override"
+                >
+                  {[15, 30, 60, 120, 300, 600, 900, 1800, 3600]
+                    .filter((s) => s >= (c.defaultIntervalSecs > 300 ? 300 : 15))
+                    .map((s) => (
+                      <option key={s} value={s}>
+                        {s < 60 ? `${s}s` : `${s / 60}m`}
+                      </option>
+                    ))}
+                </select>
+              )}
+            </li>
+          ))}
+        </ul>
+
+        <button className="btn" style={{ marginTop: 8 }} onClick={() => setShowLedger((v) => !v)}>
+          {showLedger ? "Hide" : "📜"} Decision ledger
+        </button>
+        {showLedger && (
+          <ul className="ledger-list">
+            {ledger.length === 0 && (
+              <li className="text-dim" style={{ fontSize: 11.5 }}>No decisions logged yet.</li>
+            )}
+            {ledger.map((l) => (
+              <li key={l.id} className="ledger-row">
+                <span className={`ledger-decision d-${l.decision}`}>{l.decision}</span>
+                <span className="ledger-cap">{l.capabilityId}</span>
+                <span className="ledger-reason">{l.reason}</span>
+                {l.score != null && (
+                  <span className="ledger-score">{l.score.toFixed(2)}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </section>
   );

@@ -10,10 +10,32 @@ import { CalendarView } from "../Calendar/CalendarView";
 import { AmbientMemoryView } from "../AmbientMemory/AmbientMemoryView";
 import { GhostPanel } from "../Ghost/GhostPanel";
 import { AutonomyPanel } from "../Autonomy/AutonomyPanel";
+import { HealthLensView } from "../Health/HealthLensView";
+import { StoryExportView } from "../Story/StoryExportView";
+import { DatabaseView } from "../Database/DatabaseView";
+import { DocxView } from "../Docx/DocxView";
+import { ProjectsView } from "../Projects/ProjectsView";
+import { LeftSidebar } from "./LeftSidebar";
+import { RightSidebar } from "./RightSidebar";
+import { WellnessOverlayHost } from "../Wellness/WellnessOverlayHost";
 import strawberryIcon from "../../assets/strawberry-icon.png";
+import type { View } from "./viewTypes";
 
-type View = "dashboard" | "tree" | "screens" | "inbox" | "planner" | "calendar" | "ambient" | "ghost" | "autonomy";
-
+/**
+ * 🍓 AppLayout — 3-window shell with a fixed background image.
+ *
+ *   ┌────────────────────────────────────────────┐
+ *   │ topbar (brand · search · actions)          │
+ *   ├──────────┬───────────────────┬────────────┤
+ *   │ left     │ center             │ right      │
+ *   │ nav rail │ real working       │ habits +   │
+ *   │          │ project widgets    │ calendar   │
+ *   └──────────┴───────────────────┴────────────┘
+ *
+ * The center pane renders the project's real working components
+ * (ResumeBanner, ContextRecall, Wellness, Alpha Hunter, briefing,
+ * todos, habits, charts, health lens, story export) — not mock widgets.
+ */
 export function AppLayout({ children }: { children: ReactNode }) {
   const openDialog = useAppStore((s) => s.openDialog);
   const currentRootId = useAppStore((s) => s.currentRootId);
@@ -22,77 +44,92 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const goHome = useAppStore((s) => s.goHome);
   const clearSearch = useAppStore((s) => s.clearSearch);
 
-  // Dashboard vs tree navigation. A specific root/chat view or active search
-  // always wins over the dashboard toggle.
   const [view, setView] = useState<View>("dashboard");
   const inDetailView = Boolean(currentRootId) || Boolean(currentChatId) || searchResults !== null;
-  const showDashboard = view === "dashboard" && !inDetailView;
 
-  const goDashboard = () => {
+  const navigate = (v: View) => {
+    if (v === "dashboard") {
+      clearSearch();
+      goHome();
+      setView("dashboard");
+      return;
+    }
+    if (v === "settings") {
+      openDialog({ kind: "settings" });
+      return;
+    }
     clearSearch();
-    goHome();
-    setView("dashboard");
-  };
-  const goTree = () => setView("tree");
-  const goScreens = () => {
-    clearSearch();
-    setView("screens");
-  };
-  const goInbox = () => {
-    clearSearch();
-    setView("inbox");
-  };
-  const goPlanner = () => {
-    clearSearch();
-    setView("planner");
-  };
-  const goCalendar = () => {
-    clearSearch();
-    setView("calendar");
-  };
-  const goAmbient = () => {
-    clearSearch();
-    setView("ambient");
-  };
-  const goGhost = () => {
-    clearSearch();
-    setView("ghost");
-  };
-  const goAutonomy = () => {
-    clearSearch();
-    setView("autonomy");
+    setView(v);
   };
 
-  // Keyboard: Ctrl/Cmd+1 dashboard, Ctrl/Cmd+2 tree, Ctrl/Cmd+3 screens.
+  // Keyboard: Ctrl/Cmd+1..5 for the first five views.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "1") {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const map: Record<string, View> = {
+        "1": "dashboard",
+        "2": "progress",
+        "3": "system_scan",
+        "4": "outbox",
+        "5": "calendar",
+      };
+      const v = map[e.key];
+      if (v) {
         e.preventDefault();
-        goDashboard();
-      } else if ((e.ctrlKey || e.metaKey) && e.key === "2") {
-        e.preventDefault();
-        goTree();
-      } else if ((e.ctrlKey || e.metaKey) && e.key === "3") {
-        e.preventDefault();
-        goScreens();
-      } else if ((e.ctrlKey || e.metaKey) && e.key === "4") {
-        e.preventDefault();
-        goInbox();
-      } else if ((e.ctrlKey || e.metaKey) && e.key === "5") {
-        e.preventDefault();
-        goPlanner();
+        navigate(v);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const [theme, setTheme] = useState(
+    () => document.documentElement.dataset.theme || "light",
+  );
+
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem("strawberry-theme-v3", next);
+    setTheme(next);
+  };
+
+  const centerView = (() => {
+    // Knowledge view always shows the real tree browser (HomeView with the
+    // saved roots, or BrowserView once a root is open). This is where all
+    // saved content lives — it must never be shadowed by the dashboard.
+    if (view === "progress") return children;
+    if (inDetailView) return children;
+    switch (view) {
+      case "system_scan": return <ScreensView />;
+      case "calendar":    return <CalendarView />;
+      case "outbox":      return <InboxView />;
+      case "planner":     return <PlannerView />;
+      case "ambient":     return <AmbientMemoryView />;
+      case "ghost":       return <GhostPanel />;
+      case "autonomy":    return <AutonomyPanel />;
+      case "health":      return <HealthLensView />;
+      case "story":       return <StoryExportView />;
+      case "database":    return <DatabaseView />;
+      case "docx":        return <DocxView />;
+      case "projects":    return <ProjectsView />;
+      default:            return <DashboardView />;
+    }
+  })();
+
   return (
     <div className="app-shell">
+      <div className="bg-image" aria-hidden />
+      <div className="bg-veil" aria-hidden />
+
+      {/* In-app wellness reminder popup — always visible even if the
+          OS-level popup window fails (e.g. some Wayland compositors). */}
+      <WellnessOverlayHost />
+
       <header className="topbar">
         <button
           className="brand"
-          onClick={goDashboard}
+          onClick={() => navigate("dashboard")}
           title="Strawberry — Dashboard (Ctrl+1)"
           aria-label="Strawberry dashboard"
         >
@@ -101,74 +138,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
           </span>
         </button>
 
-        <nav className="nav-tabs" aria-label="Main views">
-          <button
-            className={`nav-tab${showDashboard ? " active" : ""}`}
-            onClick={goDashboard}
-            title="Ctrl/Cmd+1"
-          >
-            ⌂ Dashboard
-          </button>
-          <button
-            className={`nav-tab${!showDashboard && view === "tree" ? " active" : ""}`}
-            onClick={goTree}
-            title="Ctrl/Cmd+2"
-          >
-            🌳 Knowledge Tree
-          </button>
-          <button
-            className={`nav-tab${view === "screens" ? " active" : ""}`}
-            onClick={goScreens}
-            title="Ctrl/Cmd+3"
-          >
-            📺 Screens
-          </button>
-          <button
-            className={`nav-tab${view === "inbox" ? " active" : ""}`}
-            onClick={goInbox}
-            title="Ctrl/Cmd+4"
-          >
-            📥 Inbox
-          </button>
-          <button
-            className={`nav-tab${view === "planner" ? " active" : ""}`}
-            onClick={goPlanner}
-            title="Ctrl/Cmd+5"
-          >
-            🗓️ Planner
-          </button>
-          <button
-            className={`nav-tab${view === "calendar" ? " active" : ""}`}
-            onClick={goCalendar}
-            title="Advanced Calendar"
-          >
-            📅 Calendar
-          </button>
-          <button
-            className={`nav-tab${view === "ambient" ? " active" : ""}`}
-            onClick={goAmbient}
-            title="Ambient Memory"
-          >
-            🧠 Ambient Memory
-          </button>
-          <button
-            className={`nav-tab${view === "ghost" ? " active" : ""}`}
-            onClick={goGhost}
-            title="The Ghost — knowledge graph & insights"
-          >
-            👻 Ghost
-          </button>
-          <button
-            className={`nav-tab${view === "autonomy" ? " active" : ""}`}
-            onClick={goAutonomy}
-            title="Autonomy Runtime"
-          >
-            🤖 Autonomy
-          </button>
-        </nav>
-
         <SearchBox />
         <div className="topbar-spacer" />
+
         {!currentRootId && (
           <button
             className="btn"
@@ -182,39 +154,19 @@ export function AppLayout({ children }: { children: ReactNode }) {
           className="theme-toggle"
           title="Toggle theme (dark / light)"
           aria-label="Toggle theme"
-          onClick={() => {
-            const next =
-              document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-            document.documentElement.dataset.theme = next;
-            localStorage.setItem("strawberry-theme-v2", next);
-          }}
+          onClick={toggleTheme}
         >
-          {document.documentElement.dataset.theme === "dark" ? "☀️" : "🌙"}
+          {theme === "dark" ? "☀️" : "🌙"}
         </button>
         <span className="offline-chip" title="All data stays on this machine">
           Offline · Local
         </span>
       </header>
+
       <div className="main-area">
-        {view === "screens" ? (
-          <ScreensView />
-        ) : view === "inbox" ? (
-          <InboxView />
-        ) : view === "planner" ? (
-          <PlannerView />
-        ) : view === "calendar" ? (
-          <CalendarView />
-        ) : view === "ambient" ? (
-          <AmbientMemoryView />
-        ) : view === "ghost" ? (
-          <GhostPanel />
-        ) : view === "autonomy" ? (
-          <AutonomyPanel />
-        ) : showDashboard ? (
-          <DashboardView />
-        ) : (
-          children
-        )}
+        <LeftSidebar active={view} onNavigate={navigate} />
+        <main className="center-pane">{centerView}</main>
+        <RightSidebar />
       </div>
     </div>
   );

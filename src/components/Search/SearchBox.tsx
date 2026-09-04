@@ -39,7 +39,7 @@ export function SearchBox() {
       <input
         id="global-search"
         type="text"
-        placeholder="Search chats… (Ctrl/Cmd+K)"
+        placeholder="Search everything… (Ctrl/Cmd+K)"
         value={local}
         onChange={(e) => setLocal(e.target.value)}
         onKeyDown={(e) => {

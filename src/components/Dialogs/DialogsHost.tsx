@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useAppStore } from "../../store/appStore";
 import { Dialog } from "./Dialog";
+import { AiSettings } from "../Settings/AiSettings";
 import { isValidName, isSupportedImport, readFileAsText, formatBytes, MAX_IMPORT_BYTES } from "../../lib/utils";
 
 export function DialogsHost() {
@@ -21,6 +22,8 @@ export function DialogsHost() {
       return <RenameFolderDialog nodeId={dialog.nodeId} initial={dialog.name} />;
     case "confirm-delete":
       return <ConfirmDeleteDialog target={dialog.target} />;
+    case "settings":
+      return <SettingsDialog />;
   }
 }
 
@@ -397,6 +400,25 @@ function ConfirmDeleteDialog({
       canSubmit
       onSubmit={confirm}
     >
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Coming-soon placeholders (Settings / Agent / DOCX)
+// ---------------------------------------------------------------------------
+
+function SettingsDialog() {
+  const closeDialog = useAppStore((s) => s.closeDialog);
+  return (
+    <Dialog title="Settings" hint="App preferences, theme, AI providers." onSubmit={closeDialog} submitLabel="Close" busy={false} canSubmit>
+      <div className="field">
+        <p className="text-dim" style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+          🍓 Use the theme toggle (☀️/🌙) in the top-right for dark / light.
+          Background image lives at <code>src/assets/strawberry-bg.png</code>.
+        </p>
+      </div>
+      <AiSettings />
     </Dialog>
   );
 }

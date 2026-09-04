@@ -3,9 +3,14 @@ import ReactDOM from "react-dom/client";
 import App, { PopupApp } from "./App";
 import "./styles/global.css";
 
-// Theme bootstrap — dark by default, persisted choice wins.
-document.documentElement.dataset.theme =
-  (localStorage.getItem("strawberry-theme-v2") as "dark" | "light") ?? "light";
+// Theme bootstrap — light is the default. We migrated the storage key from
+// "strawberry-theme-v2" to "...-v3" so the new bright UI lands correctly
+// even if the user previously persisted "dark" in an older build.
+const _v3 = localStorage.getItem("strawberry-theme-v3") as "dark" | "light" | null;
+const _initial: "dark" | "light" = _v3 === "dark" || _v3 === "light" ? _v3 : "light";
+document.documentElement.dataset.theme = _initial;
+// best-effort: clean up the v2 key so it doesn't get reused
+try { localStorage.removeItem("strawberry-theme-v2"); } catch { /* noop */ }
 
 // Route based on the window URL hash. The popup window is opened with
 // "/#/wellness-popup" and should render only the small reminder — the

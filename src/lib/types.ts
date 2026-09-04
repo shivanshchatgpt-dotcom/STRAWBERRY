@@ -94,6 +94,18 @@ export interface SearchResult {
   createdAt: string;
 }
 
+/** One hit from the unified search-everything command. */
+export interface UnifiedSearchItem {
+  /** chat | todo | habit | event | insight | alpha */
+  kind: string;
+  entityId: string;
+  title: string;
+  snippet: string;
+  location: string;
+  emoji: string;
+  createdAt: string;
+}
+
 export type SearchScopeKind = "global" | "root" | "folder";
 
 export interface AppInfo {

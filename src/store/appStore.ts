@@ -7,7 +7,7 @@ import type {
   NodeSummary,
   Root,
   SearchScopeKind,
-  SearchResult,
+  UnifiedSearchItem,
 } from "../lib/types";
 
 // ---------------------------------------------------------------------------
@@ -30,7 +30,8 @@ export type DialogState =
   | { kind: "import-chat"; parentId: string | null }
   | { kind: "rename-root"; rootId: string; name: string }
   | { kind: "rename-folder"; nodeId: string; name: string }
-  | { kind: "confirm-delete"; target: DeleteTarget };
+  | { kind: "confirm-delete"; target: DeleteTarget }
+  | { kind: "settings" };
 
 export interface Toast {
   id: number;
@@ -75,7 +76,7 @@ interface AppState {
   // search
   searchQuery: string;
   searchScope: SearchScope | null;
-  searchResults: SearchResult[] | null;
+  searchResults: UnifiedSearchItem[] | null;
   searching: boolean;
 
   // ui
@@ -660,17 +661,10 @@ export const useAppStore = create<AppState>((set, get) => {
         set({ searchResults: null });
         return;
       }
-      const s = get();
-      const scope: SearchScope =
-        s.searchScope ??
-        (s.currentNodeId
-          ? { kind: "folder", id: s.currentNodeId, label: "This folder" }
-          : s.currentRootId
-            ? { kind: "root", id: s.currentRootId, label: "This index" }
-            : { kind: "global", id: null, label: "Global" });
       set({ searching: true });
       try {
-        const results = await api.searchChats(q, scope.kind, scope.id);
+        // Unified search: chats + todos + habits + events + insights + alpha.
+        const results = await api.searchAll(q);
         set({ searchResults: results });
       } catch (e) {
         fail(e);

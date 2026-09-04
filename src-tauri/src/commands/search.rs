@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::db;
 use crate::db::models::SearchResultItem;
+use crate::db::models::UnifiedSearchItem;
 use crate::error;
 use crate::state::AppState;
 use tauri::State;
@@ -9,6 +10,9 @@ use tauri::State;
 use super::{blocking, Cmd};
 
 const MAX_RESULTS: usize = 100;
+/// Per-entity cap so one table (e.g. hundreds of chats) can't crowd
+/// everything else out of the unified results.
+const PER_KIND_LIMIT: usize = 25;
 
 fn fts_match_expression(query: &str) -> Option<String> {
     let terms: Vec<String> = query
@@ -184,4 +188,232 @@ fn like_search(
         .query_map(named.as_slice(), map_result_row)
         .map_err(error::to_string_err("database failure searching"))?;
     collect_rows(rows, conn)
+}
+
+// ---------------------------------------------------------------------------
+// Unified search — "search everything"
+// ---------------------------------------------------------------------------
+
+/// Small helper: truncate a string to a snippet of at most `n` chars,
+/// cutting on a word boundary when possible.
+fn snippet_of(s: &str, n: usize) -> String {
+    let t = s.trim();
+    if t.chars().count() <= n {
+        return t.to_string();
+    }
+    let cut: String = t.chars().take(n).collect();
+    match cut.rfind(' ') {
+        Some(i) if i > n / 2 => format!("{} …", &cut[..i]),
+        _ => format!("{} …", cut),
+    }
+}
+
+/// Search EVERYTHING: chats (FTS + LIKE), todos, habits, calendar events,
+/// ghost insights and alpha-hunter candidates. Each entity is matched by
+/// its own keyword-bearing text columns. Results are interleaved so the
+/// user sees a mix, not 25 chats followed by everything else.
+#[tauri::command]
+pub async fn search_all(
+    state: State<'_, Arc<AppState>>,
+    query: String,
+    _scope_kind: Option<String>,
+    _scope_id: Option<String>,
+) -> Cmd<Vec<UnifiedSearchItem>> {
+    let st = state.inner().clone();
+    blocking(st, move |app| {
+        let q = query.trim().to_lowercase();
+        if q.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = app.conn.lock().map_err(|_| error::ERR_DB_LOCK.to_string())?;
+        let pattern = like_pattern(&q);
+        let pat: &dyn rusqlite::ToSql = &pattern;
+        let mut out: Vec<UnifiedSearchItem> = Vec::new();
+
+        // ---- chats (reuse the existing FTS/LIKE machinery) ----
+        let use_fts = db::fts_enabled(&conn);
+        let chat_rows: Vec<SearchResultItem> = if use_fts {
+            match fts_search(&conn, &q, "global", None) {
+                Ok(r) => r,
+                Err(_) => like_search(&conn, &q, "global", None)?,
+            }
+        } else {
+            like_search(&conn, &q, "global", None)?
+        };
+        for c in chat_rows.into_iter().take(PER_KIND_LIMIT) {
+            out.push(UnifiedSearchItem {
+                kind: "chat".into(),
+                entity_id: c.chat_id,
+                title: c.title,
+                snippet: snippet_of(&c.snippet, 140),
+                location: [c.root_name, c.folder_path]
+                    .iter()
+                    .filter(|s| !s.is_empty())
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(" / "),
+                emoji: "💬".into(),
+                created_at: c.created_at,
+            });
+        }
+
+        // ---- todos ----
+        {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, title, coalesce(description,''), coalesce(due_date,''),
+                            completed, coalesce(created_at,'')
+                     FROM todos
+                     WHERE lower(title) LIKE ?1 ESCAPE '\\'
+                        OR lower(coalesce(description,'')) LIKE ?1 ESCAPE '\\'
+                     ORDER BY created_at DESC LIMIT ?2",
+                )
+                .map_err(error::to_string_err("database failure searching todos"))?;
+            let rows = stmt
+                .query_map(rusqlite::params![pat, PER_KIND_LIMIT as i64], |r| {
+                    let done: i64 = r.get(4)?;
+                    Ok(UnifiedSearchItem {
+                        kind: "todo".into(),
+                        entity_id: r.get::<_, i64>(0)?.to_string(),
+                        title: r.get(1)?,
+                        snippet: snippet_of(&r.get::<_, String>(2)?, 120),
+                        location: if done != 0 { "Tasks · done".into() } else { "Tasks".into() },
+                        emoji: if done != 0 { "✅".into() } else { "📋".into() },
+                        created_at: r.get(5)?,
+                    })
+                })
+                .map_err(error::to_string_err("database failure searching todos"))?;
+            for row in rows {
+                out.push(row.map_err(|e| e.to_string())?);
+            }
+        }
+
+        // ---- habits ----
+        {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, name, coalesce(icon,'🔥'), coalesce(description,''),
+                            coalesce(created_at,'')
+                     FROM habits
+                     WHERE lower(name) LIKE ?1 ESCAPE '\\'
+                        OR lower(coalesce(description,'')) LIKE ?1 ESCAPE '\\'
+                     ORDER BY id DESC LIMIT ?2",
+                )
+                .map_err(error::to_string_err("database failure searching habits"))?;
+            let rows = stmt
+                .query_map(rusqlite::params![pat, PER_KIND_LIMIT as i64], |r| {
+                    Ok(UnifiedSearchItem {
+                        kind: "habit".into(),
+                        entity_id: r.get::<_, i64>(0)?.to_string(),
+                        title: r.get(1)?,
+                        snippet: snippet_of(&r.get::<_, String>(3)?, 120),
+                        location: "Habits".into(),
+                        emoji: r.get::<_, String>(2)?,
+                        created_at: r.get(4)?,
+                    })
+                })
+                .map_err(error::to_string_err("database failure searching habits"))?;
+            for row in rows {
+                out.push(row.map_err(|e| e.to_string())?);
+            }
+        }
+
+        // ---- calendar events ----
+        {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, title, coalesce(description,''), coalesce(category,''),
+                            coalesce(start_at,'')
+                     FROM events
+                     WHERE lower(title) LIKE ?1 ESCAPE '\\'
+                        OR lower(coalesce(description,'')) LIKE ?1 ESCAPE '\\'
+                     ORDER BY start_at DESC LIMIT ?2",
+                )
+                .map_err(error::to_string_err("database failure searching events"))?;
+            let rows = stmt
+                .query_map(rusqlite::params![pat, PER_KIND_LIMIT as i64], |r| {
+                    Ok(UnifiedSearchItem {
+                        kind: "event".into(),
+                        entity_id: r.get(0)?,
+                        title: r.get(1)?,
+                        snippet: snippet_of(&r.get::<_, String>(2)?, 120),
+                        location: format!("Calendar · {}", r.get::<_, String>(3)?),
+                        emoji: "📅".into(),
+                        created_at: r.get(4)?,
+                    })
+                })
+                .map_err(error::to_string_err("database failure searching events"))?;
+            for row in rows {
+                out.push(row.map_err(|e| e.to_string())?);
+            }
+        }
+
+        // ---- ghost insights ----
+        {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, title, body, coalesce(created_at,'')
+                     FROM ghost_insights
+                     WHERE lower(title) LIKE ?1 ESCAPE '\\'
+                        OR lower(body) LIKE ?1 ESCAPE '\\'
+                     ORDER BY id DESC LIMIT ?2",
+                )
+                .map_err(error::to_string_err("database failure searching insights"))?;
+            let rows = stmt
+                .query_map(rusqlite::params![pat, PER_KIND_LIMIT as i64], |r| {
+                    Ok(UnifiedSearchItem {
+                        kind: "insight".into(),
+                        entity_id: r.get::<_, i64>(0)?.to_string(),
+                        title: r.get(1)?,
+                        snippet: snippet_of(&r.get::<_, String>(2)?, 140),
+                        location: "Ghost insights".into(),
+                        emoji: "👻".into(),
+                        created_at: r.get(3)?,
+                    })
+                })
+                .map_err(error::to_string_err("database failure searching insights"))?;
+            for row in rows {
+                out.push(row.map_err(|e| e.to_string())?);
+            }
+        }
+
+        // ---- alpha hunter candidates ----
+        {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, title, coalesce(notes,''), coalesce(provider, model_id, source),
+                            coalesce(detected_at,'')
+                     FROM alpha_candidates
+                     WHERE lower(title) LIKE ?1 ESCAPE '\\'
+                        OR lower(coalesce(notes,'')) LIKE ?1 ESCAPE '\\'
+                        OR lower(coalesce(provider,'')) LIKE ?1 ESCAPE '\\'
+                        OR lower(coalesce(model_id,'')) LIKE ?1 ESCAPE '\\'
+                     ORDER BY detected_at DESC LIMIT ?2",
+                )
+                .map_err(error::to_string_err("database failure searching alpha"))?;
+            let rows = stmt
+                .query_map(rusqlite::params![pat, PER_KIND_LIMIT as i64], |r| {
+                    Ok(UnifiedSearchItem {
+                        kind: "alpha".into(),
+                        entity_id: r.get(0)?,
+                        title: r.get(1)?,
+                        snippet: snippet_of(&r.get::<_, String>(2)?, 140),
+                        location: format!("Alpha Hunter · {}", r.get::<_, String>(3)?),
+                        emoji: "🎯".into(),
+                        created_at: r.get(4)?,
+                    })
+                })
+                .map_err(error::to_string_err("database failure searching alpha"))?;
+            for row in rows {
+                out.push(row.map_err(|e| e.to_string())?);
+            }
+        }
+
+        // Interleave: sort newest first for a natural "most recent first" list,
+        // then cap. (ISO timestamps sort lexicographically.)
+        out.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        out.truncate(MAX_RESULTS);
+        Ok(out)
+    })
+    .await
 }

@@ -12,6 +12,7 @@ import type {
   ScreenBlocklistItem,
   SearchScopeKind,
   SearchResult,
+  UnifiedSearchItem,
   TreeNode,
 } from "./types";
 
@@ -44,6 +45,22 @@ export const api = {
 
   getBreadcrumb: (nodeId: string) =>
     call<BreadcrumbItem[]>("get_breadcrumb", { nodeId }),
+
+  getNodePath: (nodeId: string) =>
+    call<string[]>("get_node_path", { nodeId }),
+
+  // Tabs (Phase 30 integrity: backend commands were registered but unbound)
+  recordTabVisit: (url: string, title?: string | null) =>
+    call<void>("record_tab_visit", { url, title: title ?? null }),
+  listTabGroups: (limit?: number) =>
+    call<Array<{ host: string; url: string; title: string | null; visitedAt: string; visits: number }>>(
+      "list_tab_groups",
+      { limit },
+    ),
+  findTabsForTopic: (query: string, limit?: number) =>
+    call<[string, string][]>("find_tabs_for_topic", { query, limit }),
+
+  ping: () => call<string>("ping"),
 
   // Folders -------------------------------------------------------------------
   createFolder: (rootId: string, parentId: string | null, name: string) =>
@@ -129,6 +146,40 @@ export const api = {
       scopeKind,
       scopeId,
     }),
+
+  /** Unified search — chats, todos, habits, events, insights, alpha candidates. */
+  searchAll: (query: string) =>
+    call<UnifiedSearchItem[]>("search_all", { query }),
+
+  /** Database overview — live counts + the 20 most recent Ctrl+C captures. */
+  getDbOverview: () => call<DbOverviewData>("get_db_overview"),
+
+  // 📄 DOCX workspace -------------------------------------------------------
+  docxList: () => call<docx.DocxSummary[]>("docx_list"),
+  docxNew: () => call<docx.DocxDocument>("docx_new"),
+  docxOpen: (documentId: string) =>
+    call<docx.DocxDocument>("docx_open", { documentId }),
+  docxSave: (documentId: string, title: string, blocks: docx.Block[]) =>
+    call<void>("docx_save", { args: { documentId, title, blocks } }),
+  docxDelete: (documentId: string) =>
+    call<void>("docx_delete", { documentId }),
+  docxParsePaste: (input: docx.PasteInput) =>
+    call<docx.Block[]>("docx_parse_paste", { input }),
+  docxSearch: (query: string) =>
+    call<docx.DocxSummary[]>("docx_search", { query }),
+  docxExport: (documentId: string, format: "markdown" | "html" | "json") =>
+    call<docx.DocxExport>("docx_export", { documentId, format }),
+
+  // 🌳 Project Brain (Phase C/D/E) ------------------------------------------------
+
+  getProjectBrain: () =>
+    call<ProjectBrainData>("get_project_brain"),
+
+  getWhatChanged: () =>
+    call<WhatChangedData>("get_what_changed"),
+
+  getIntelligentResume: () =>
+    call<IntelligentResumeData>("get_intelligent_resume"),
 
   // Screen Memory -----------------------------------------------------------------
   startScreenCapture: (config?: ScreenConfig | null) =>
@@ -321,16 +372,20 @@ export const api = {
   wellnessSetCategory: (
     category: string,
     enabled: boolean,
-    intervalMinutes: number,
+    intervalSeconds: number,
   ) =>
     call<void>("wellness_set_category", {
       category,
       enabled,
-      intervalMinutes,
+      intervalSeconds,
     }),
   wellnessRecordActivity: (source: string) =>
     call<void>("wellness_record_activity", { source }),
   wellnessDismiss: () => call<void>("wellness_dismiss"),
+
+  /** Fire a wellness popup right now — for testing the reminder pipeline. */
+  wellnessTestPopup: (category?: string) =>
+    call<void>("wellness_test_popup", { category: category ?? null }),
 
   // Alpha Hunter ---------------------------------------------------------------
   scanAlpha: () => call<alpha.ScanReport>("scan_alpha"),
@@ -377,6 +432,24 @@ export const api = {
   autonomyPublish: (kind: string, data: Record<string, unknown>) =>
     call<void>("autonomy_publish", { kind, data }),
 
+  // 🧩 Capability Registry + Scheduler ledger (Phase 6) --------------------
+  listCapabilities: () =>
+    call<autonomy.CapabilityState[]>("list_capabilities"),
+  setCapabilityEnabled: (capabilityId: string, enabled: boolean) =>
+    call<void>("set_capability_enabled", { capabilityId, enabled }),
+  setCapabilityInterval: (capabilityId: string, intervalSecs: number) =>
+    call<void>("set_capability_interval", { capabilityId, intervalSecs }),
+  getCapabilityLedger: (limit?: number) =>
+    call<autonomy.LedgerEntry[]>("get_capability_ledger", { limit }),
+
+  // 🎯 Goal Engine (Phase 7) — deterministic candidates --------------------
+  getGoalCandidates: () =>
+    call<autonomy.GoalCandidate[]>("get_goal_candidates"),
+
+  // 🗺️ Planner (Phase 8) — deterministic, non-executing plans ---------------
+  getPlans: () =>
+    call<Array<autonomy.PlannedResult>>("get_plans"),
+
   // ── AI / Intelligence ────────────────────────────────────────────────────
   aiGetStatus: () => call<Record<string, unknown>>("ai_get_status"),
   aiSetEnabled: (enabled: boolean) =>
@@ -406,7 +479,8 @@ export namespace wellness {
   export interface WellnessConfig {
     category: string;
     enabled: boolean;
-    intervalMinutes: number;
+    /** Repeat interval in **seconds**. Convert to minutes/hours for display. */
+    intervalSeconds: number;
     lastRemindedAt: string | null;
   }
 }
@@ -525,6 +599,124 @@ export namespace autonomy {
     worldStateVersion: number;
     uptimeSecs: number;
   }
+
+  // ── Capability Registry (Phase 6) ────────────────────────────────────
+  export type CapabilityTrigger =
+    | "event"
+    | "debounced"
+    | "interval"
+    | "idle"
+    | "session"
+    | "daily"
+    | "weekly";
+
+  export type CapabilityRisk = "low" | "medium" | "high" | "forbidden";
+
+  export type CapabilityLayer =
+    | "instant"
+    | "fast_brain"
+    | "ghost"
+    | "deep_background"
+    | "daily"
+    | "long_term";
+
+  export interface CapabilityState {
+    id: string;
+    name: string;
+    trigger: CapabilityTrigger;
+    defaultIntervalSecs: number;
+    layer: CapabilityLayer;
+    risk: CapabilityRisk;
+    resourceCost: number;
+    privacySensitivity: number;
+    valueWeight: number;
+    dependsOn: string[];
+    goal: string;
+    enabled: boolean;
+    intervalSecs: number;
+    overrideReason: string | null;
+  }
+
+  export interface LedgerEntry {
+    id: number;
+    capabilityId: string;
+    decision: string;
+    reason: string;
+    score: number | null;
+    createdAt: string;
+  }
+
+  // ── Goal Engine (Phase 7) ────────────────────────────────────────────
+  export interface GoalEvidence {
+    kind: "task" | "error" | "resume" | "project";
+    ref: string;
+    summary: string;
+    weight: number;
+  }
+
+  export type GoalStatus =
+    | "candidate"
+    | "accepted"
+    | "completed"
+    | "cancelled"
+    | "expired";
+
+  export type GoalPriority = "low" | "medium" | "high";
+
+  export interface GoalCandidate {
+    goalId: number;
+    title: string;
+    description: string;
+    project: string | null;
+    priority: GoalPriority;
+    confidence: number;
+    evidence: GoalEvidence[];
+    status: GoalStatus;
+    createdAt: string;
+    expiresAt: string;
+  }
+
+  // ── Planner (Phase 8) ────────────────────────────────────────────────
+  export type StepAction = "inspect" | "prepare" | "requires_approval";
+
+  export interface PlanStep {
+    stepId: number;
+    capability: string;
+    action: StepAction;
+    purpose: string;
+    targets: string[];
+    prerequisites: number[];
+    expectedResult: string;
+    resourceCost: number;
+    riskHint: string | null;
+    order: number;
+  }
+
+  export interface Plan {
+    planId: number;
+    goalId: number;
+    title: string;
+    description: string;
+    steps: PlanStep[];
+    dependencies: [number, number][];
+    estimatedCost: number;
+    expectedOutcome: string;
+    alternatives: PlanStep[];
+    confidence: number;
+    status: "draft" | "ready" | "rejected" | "stale";
+    createdAt: string;
+  }
+
+  export interface PlanRejection {
+    goalId: number;
+    reason: string;
+    createdAt: string;
+  }
+
+  /** One planning outcome: a real plan or a rejection reason. */
+  export type PlannedResult =
+    | { kind: "plan"; value: Plan }
+    | { kind: "rejected"; value: PlanRejection };
   export interface WorldState {
     version: number;
     updatedAtMs: number;
@@ -576,6 +768,75 @@ export namespace health {
     topHomeDirs: CacheSize[];
     notes: string[];
   }
+}
+
+/** 🗄️ Database overview payload. */
+export interface DbOverviewData {
+  overview: {
+    roots: number;
+    folders: number;
+    chats: number;
+    captures: number;
+    captureNotes: number;
+    captureCode: number;
+    captureErrors: number;
+    captureUrls: number;
+    todosOpen: number;
+    todosDone: number;
+    habits: number;
+    events: number;
+    alphaCandidates: number;
+    insights: number;
+    dbSizeBytes: number;
+  };
+  recent: Array<{
+    chatId: string;
+    title: string;
+    kind: string;
+    createdAt: string;
+  }>;
+}
+
+/** 🌳 Project Brain (Phase C). */
+export interface ProjectBrainData {
+  projects: Array<{
+    path: string;
+    name: string;
+    origin: string;
+    lastSeenAt: number;
+    openTasks: string[];
+    tasksDone: number;
+    recentErrors: string[];
+    decisions: string[];
+    activity: [string, number][];
+    nextLikelyAction: string;
+  }>;
+}
+
+/** 🔄 What Changed (Phase E). */
+export interface WhatChangedData {
+  baselineNote: string;
+  since: string;
+  tasksCompleted: string[];
+  tasksAdded: string[];
+  newCaptures: string[];
+  newChats: string[];
+  habitsDone: string[];
+  newEvents: string[];
+  activity: [string, number][];
+  summary: string;
+}
+
+/** ⏮️ Intelligent Resume (Phase D). */
+export interface IntelligentResumeData {
+  narrative: {
+    headline: string;
+    since: string;
+    changedSummary: string;
+    plan: string[];
+    focusProject: string | null;
+  };
+  changes: WhatChangedData;
 }
 
 export namespace inbox {
@@ -736,4 +997,81 @@ export namespace ws {
   }
   /** id, name, story, createdAt */
   export type WorkSpaceRow = [string, string, string, string];
+}
+
+// ---------------------------------------------------------------------------
+// 📄 DOCX — offline block-document workspace
+// ---------------------------------------------------------------------------
+
+export namespace docx {
+  export type BlockType =
+    | "text" | "heading" | "table" | "formula" | "tree" | "graph"
+    | "chart" | "todo" | "image" | "code" | "divider" | "callout";
+
+  export interface TableProps {
+    headerRow: boolean;
+    borderThickness: number;
+    borderColor: string;
+    zebra: boolean;
+    cellPadding: number;
+    align: string;
+    outerBorder: boolean;
+  }
+
+  export interface ChartConfig {
+    chartType: "bar" | "line" | "pie" | "scatter";
+    title: string;
+    xLabel: string;
+    yLabel: string;
+    showLegend: boolean;
+    sourceBlockId: string | null;
+    annotations: Array<{ id: string; text: string; x: number; y: number; fontSize: number }>;
+    data: string[][];
+  }
+
+  export interface TodoTask {
+    id: string;
+    text: string;
+    done: boolean;
+    priority: number;
+  }
+
+  export interface TreeNode {
+    id: string;
+    text: string;
+    children: TreeNode[];
+    collapsed: boolean;
+  }
+
+  /** One typed block. `data` carries the per-type payload. */
+  export interface Block {
+    id: string;
+    type: BlockType;
+    data: Record<string, unknown>;
+  }
+
+  export interface DocxDocument {
+    id: string;
+    title: string;
+    blocks: Block[];
+    createdAt: string;
+    updatedAt: string;
+  }
+
+  export interface DocxSummary {
+    id: string;
+    title: string;
+    preview: string;
+    updatedAt: string;
+  }
+
+  export interface DocxExport {
+    filename: string;
+    content: string;
+  }
+
+  export interface PasteInput {
+    html: string | null;
+    text: string | null;
+  }
 }

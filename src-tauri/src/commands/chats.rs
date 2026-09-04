@@ -126,6 +126,26 @@ fn create_chat_impl(app: &AppState, args: CreateChatArgs) -> Result<ChatDetail, 
         return Err(error::ERR_EMPTY_TEXT.to_string());
     }
 
+    // Privacy gate (master spec §Privacy: EVERY capture passes policy
+    // before SQLite/FTS/raw files). Pasted secrets are blocked or the
+    // stored text is the redacted form — never the raw secret.
+    let (text, privacy_note): (String, Option<String>) = {
+        let policy = strawberry_core::privacy::PrivacyPolicy::default();
+        let decision = policy.evaluate(&text);
+        match decision.action {
+            strawberry_core::privacy::PrivacyAction::Block => {
+                return Err(format!(
+                    "Blocked by privacy policy: {}",
+                    decision.summary()
+                ));
+            }
+            strawberry_core::privacy::PrivacyAction::Redact => {
+                (policy.redact(&text), Some(decision.summary()))
+            }
+            strawberry_core::privacy::PrivacyAction::Allow => (text, None),
+        }
+    };
+
     // Validate tree targets before touching the filesystem.
     {
         let conn = app.conn.lock().map_err(|_| error::ERR_DB_LOCK.to_string())?;
@@ -137,7 +157,12 @@ fn create_chat_impl(app: &AppState, args: CreateChatArgs) -> Result<ChatDetail, 
     let chat_id = db::new_uuid();
     let now = db::now_iso();
 
-    let generated = brief::generate(&title, &text);
+    let mut generated = brief::generate(&title, &text);
+    if let Some(note) = &privacy_note {
+        // Explainability: the brief records that (and why) content was
+        // redacted before storage — never the redacted material itself.
+        generated.markdown = format!("> 🔒 {note}\n\n{}", generated.markdown);
+    }
     let chat_stats = ChatStats::from(generated.stats);
 
     let dir: PathBuf =

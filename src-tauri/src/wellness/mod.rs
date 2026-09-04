@@ -50,7 +50,10 @@ impl std::str::FromStr for WellnessCategory {
 pub struct WellnessConfig {
     pub category: String,
     pub enabled: bool,
-    pub interval_minutes: i64,
+    /// Repeat interval in seconds. Lets the UI expose seconds / minutes / hours
+    /// without lossy conversions. Stored as a plain i64 — chosen as the
+    /// canonical unit so the runtime tick logic never has to interpret a unit.
+    pub interval_seconds: i64,
     pub last_reminded_at: Option<String>,
 }
 
@@ -105,13 +108,17 @@ impl WellnessAgent {
             s.shutdown.clone()
         };
         std::thread::spawn(move || {
+            // Poll every second so short intervals (user can set seconds-level
+            // reminders, e.g. blink every 7 s) fire on time. One lightweight
+            // SELECT per second against the local SQLite DB is negligible.
+            // Shutdown stays responsive via 250 ms sub-sleeps.
             while !shutdown.load(std::sync::atomic::Ordering::Relaxed) {
                 Self::tick(&agent);
-                for _ in 0..60 {
+                for _ in 0..4 {
                     if shutdown.load(std::sync::atomic::Ordering::Relaxed) {
                         return;
                     }
-                    std::thread::sleep(Duration::from_secs(1));
+                    std::thread::sleep(Duration::from_millis(250));
                 }
             }
         });
@@ -152,6 +159,16 @@ impl WellnessAgent {
             Ok(c) => c,
             Err(_) => return,
         };
+        // Central scheduler gate (Phase 6 wiring): honors the wellness
+        // capability's enabled flag + live system context. A disabled
+        // capability suppresses reminders; everything else proceeds as-is.
+        // The gate reads only — it never mutates wellness state.
+        {
+            let orch = crate::autonomous::Orchestrator::new();
+            if !orch.gate(&conn, "wellness", 0.6, 0, 1).proceed {
+                return;
+            }
+        }
         if let Some(reminder) = Self::next_due_static(&conn) {
             let _ = app.emit("wellness:popup", reminder);
         }
@@ -177,15 +194,17 @@ impl WellnessAgent {
         let mut eligible: Vec<(WellnessCategory, i64, Option<String>)> = Vec::new();
 
         for cat in &categories {
-            let (enabled, interval, last) = Self::load_category_static(conn, cat);
+            let (enabled, interval_secs, last) = Self::load_category_static(conn, cat);
             if !enabled {
                 continue;
             }
 
             let due = if let Some(last_str) = &last {
                 if let Ok(last_dt) = DateTime::parse_from_rfc3339(last_str) {
-                    let mins = Utc::now().signed_duration_since(last_dt.with_timezone(&Utc)).num_minutes();
-                    mins >= interval
+                    let secs = Utc::now()
+                        .signed_duration_since(last_dt.with_timezone(&Utc))
+                        .num_seconds();
+                    secs >= interval_secs
                 } else {
                     true
                 }
@@ -194,7 +213,7 @@ impl WellnessAgent {
             };
 
             if due {
-                eligible.push((cat.clone(), interval, last));
+                eligible.push((cat.clone(), interval_secs, last));
             }
         }
 
@@ -268,7 +287,7 @@ impl WellnessAgent {
     fn load_category_static(conn: &rusqlite::Connection, cat: &WellnessCategory) -> (bool, i64, Option<String>) {
         let cat_str = cat.to_string();
         let mut stmt = conn.prepare_cached(
-            "SELECT enabled, interval_minutes, last_reminded_at FROM wellness_config WHERE category = ?1"
+            "SELECT enabled, interval_seconds, last_reminded_at FROM wellness_config WHERE category = ?1"
         ).ok();
 
         if let Some(s) = &mut stmt {
@@ -279,7 +298,7 @@ impl WellnessAgent {
             }
         }
 
-        let interval = Self::default_interval_minutes(cat);
+        let interval = Self::default_interval_seconds(cat);
         (true, interval, None)
     }
 
@@ -287,21 +306,23 @@ impl WellnessAgent {
         let now = Utc::now().to_rfc3339();
         let cat_str = cat.to_string();
         let _ = conn.execute(
-            "INSERT INTO wellness_config(category, enabled, interval_minutes, last_reminded_at)
+            "INSERT INTO wellness_config(category, enabled, interval_seconds, last_reminded_at)
              VALUES(?1, 1, ?2, ?3)
              ON CONFLICT(category) DO UPDATE SET last_reminded_at = excluded.last_reminded_at",
-            rusqlite::params![&cat_str, Self::default_interval_minutes(cat), &now],
+            rusqlite::params![&cat_str, Self::default_interval_seconds(cat), &now],
         );
     }
 
-    fn default_interval_minutes(cat: &WellnessCategory) -> i64 {
+    fn default_interval_seconds(cat: &WellnessCategory) -> i64 {
         match cat {
-            WellnessCategory::Blink => 10,
-            WellnessCategory::Water => 45,
-            WellnessCategory::Stretch => 30,
-            WellnessCategory::Posture => 60,
-            WellnessCategory::Eyes => 20,
-            WellnessCategory::Meal => 180,
+            // Default intervals are stored in seconds; cover 5 s nudges
+            // through 4-hour meal windows.
+            WellnessCategory::Blink => 10 * 60,     // 10 min
+            WellnessCategory::Water => 45 * 60,     // 45 min
+            WellnessCategory::Stretch => 30 * 60,   // 30 min
+            WellnessCategory::Posture => 60 * 60,   // 1 h
+            WellnessCategory::Eyes => 20 * 60,      // 20 min
+            WellnessCategory::Meal => 180 * 60,     // 3 h
         }
     }
 
@@ -347,13 +368,13 @@ impl WellnessAgent {
 
     pub fn get_config(app: &AppHandle) -> Cmd<Vec<WellnessConfig>> {
         let conn = Self::open_db_for(app)?;
-        let mut stmt = conn.prepare("SELECT category, enabled, interval_minutes, last_reminded_at FROM wellness_config")
+        let mut stmt = conn.prepare("SELECT category, enabled, interval_seconds, last_reminded_at FROM wellness_config")
             .map_err(|e| e.to_string())?;
         let rows = stmt.query_map([], |r| {
             Ok(WellnessConfig {
                 category: r.get(0)?,
                 enabled: r.get::<_, i64>(1)? != 0,
-                interval_minutes: r.get(2)?,
+                interval_seconds: r.get(2)?,
                 last_reminded_at: r.get(3)?,
             })
         }).map_err(|e| e.to_string())?;
@@ -365,13 +386,16 @@ impl WellnessAgent {
         Ok(out)
     }
 
-    pub fn set_category(app: &AppHandle, category: String, enabled: bool, interval_minutes: i64) -> Cmd<()> {
+    pub fn set_category(app: &AppHandle, category: String, enabled: bool, interval_seconds: i64) -> Cmd<()> {
         let conn = Self::open_db_for(app)?;
         let enabled_val: String = if enabled { "1".into() } else { "0".into() };
-        let interval_str = interval_minutes.to_string();
+        // Defensive floor: never accept < 1 second (would hot-loop the
+        // reminder scheduler) or > 1 day (reasonable upper bound).
+        let secs = interval_seconds.max(1).min(86_400);
+        let interval_str = secs.to_string();
         conn.execute(
-            "INSERT INTO wellness_config(category, enabled, interval_minutes, last_reminded_at) VALUES(?1, ?2, ?3, NULL)
-             ON CONFLICT(category) DO UPDATE SET enabled = excluded.enabled, interval_minutes = excluded.interval_minutes",
+            "INSERT INTO wellness_config(category, enabled, interval_seconds, last_reminded_at) VALUES(?1, ?2, ?3, NULL)
+             ON CONFLICT(category) DO UPDATE SET enabled = excluded.enabled, interval_seconds = excluded.interval_seconds",
             [&category, &enabled_val, &interval_str],
         ).map_err(|e| e.to_string())?;
         Ok(())
