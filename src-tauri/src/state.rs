@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::Mutex;
 
 use rusqlite::Connection;
@@ -7,9 +8,15 @@ use rusqlite::Connection;
 ///
 /// The SQLite connection is guarded by a std Mutex; commands run blocking
 /// work inside `spawn_blocking`, so no async-aware lock is required.
+///
+/// The `watcher` is a SHARED singleton — the UI's "Start watching" command
+/// affects the same underlying FileWatcherRunner as the background polling
+/// thread. This prevents duplicate watchers and makes watched-paths visible
+/// across the app.
 pub struct AppState {
     pub conn: Mutex<Connection>,
     pub data_dir: PathBuf,
+    pub watcher: Arc<crate::autonomous::watcher_runner::FileWatcherRunner>,
 }
 
 impl AppState {
@@ -23,6 +30,7 @@ impl AppState {
         Ok(Self {
             conn: Mutex::new(conn),
             data_dir,
+            watcher: Arc::new(crate::autonomous::watcher_runner::FileWatcherRunner::new()),
         })
     }
 

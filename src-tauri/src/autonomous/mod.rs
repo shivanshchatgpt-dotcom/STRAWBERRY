@@ -55,12 +55,21 @@ pub mod prediction;
 pub mod intelligence_gate;
 pub mod priority;
 pub mod intent;
+pub mod shell;
+pub mod worker;
+pub mod file_effector;
+pub mod composite_effector;
+pub mod watcher_runner;
+pub mod ocr;
+pub mod file_indexer;
 #[cfg(test)]
 mod wiring_tests;
 #[cfg(test)]
 mod hardening_audits;
 #[cfg(test)]
 mod perf_audits;
+#[cfg(test)]
+mod e2e_tests;
 
 pub use world_state::{WorldState, WorldStateDiff, WorldStateVersion};
 pub use runtime::{AutonomyRuntime, RuntimeMode, RuntimeStats};

@@ -13,6 +13,7 @@ import { formatDate } from "../../lib/utils";
 const KIND_TABS: { key: string; label: string; emoji: string }[] = [
   { key: "all", label: "All", emoji: "✳️" },
   { key: "chat", label: "Chats", emoji: "💬" },
+  { key: "memory", label: "Memories", emoji: "🧠" },
   { key: "todo", label: "Tasks", emoji: "📋" },
   { key: "habit", label: "Habits", emoji: "🔥" },
   { key: "event", label: "Events", emoji: "📅" },
@@ -23,9 +24,19 @@ const KIND_TABS: { key: string; label: string; emoji: string }[] = [
 export function SearchResultsView() {
   const results = useAppStore((s) => s.searchResults);
   const searching = useAppStore((s) => s.searching);
+  const hasMore = useAppStore((s) => s.searchMemoryHasMore);
+  const loadMoreSearch = useAppStore((s) => s.loadMoreSearch);
   const query = useAppStore((s) => s.searchQuery.trim());
   const openChat = useAppStore((s) => s.openChat);
   const [tab, setTab] = useState<string>("all");
+
+  const openMemory = (memoryId: string) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+    if (w.__strawberry_open_memory) {
+      w.__strawberry_open_memory(memoryId);
+    }
+  };
 
   const counts = new Map<string, number>();
   for (const r of results ?? []) counts.set(r.kind, (counts.get(r.kind) ?? 0) + 1);
@@ -79,6 +90,7 @@ export function SearchResultsView() {
                 className="result-item"
                 onClick={() => {
                   if (r.kind === "chat") void openChat(r.entityId);
+                  else if (r.kind === "memory") openMemory(r.entityId);
                 }}
               >
                 <div className="result-path">
@@ -95,6 +107,17 @@ export function SearchResultsView() {
                 title="No results of this kind"
                 hint="Switch back to the All tab to see matches from other content types."
               />
+            )}
+            {(hasMore && (tab === "all" || tab === "memory")) && (
+              <div className="memory-search-loadmore" style={{ padding: "16px", textAlign: "center" }}>
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => void loadMoreSearch()}
+                  disabled={searching}
+                >
+                  {searching ? "Loading…" : "Load more memories"}
+                </button>
+              </div>
             )}
           </div>
         )}

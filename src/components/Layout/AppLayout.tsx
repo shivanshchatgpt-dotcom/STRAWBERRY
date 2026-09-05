@@ -15,6 +15,7 @@ import { StoryExportView } from "../Story/StoryExportView";
 import { DatabaseView } from "../Database/DatabaseView";
 import { DocxView } from "../Docx/DocxView";
 import { ProjectsView } from "../Projects/ProjectsView";
+import { MemoryPanel } from "../Memory/MemoryPanel";
 import { LeftSidebar } from "./LeftSidebar";
 import { RightSidebar } from "./RightSidebar";
 import { WellnessOverlayHost } from "../Wellness/WellnessOverlayHost";
@@ -47,6 +48,23 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const [view, setView] = useState<View>("dashboard");
   const inDetailView = Boolean(currentRootId) || Boolean(currentChatId) || searchResults !== null;
 
+  // Global hook so other panels (e.g. DOCX BlockLinkPanel) can open a
+  // specific memory in the Memory view. Sets a window flag the
+  // MemoryPanel picks up on mount.
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).__strawberry_open_memory = (memoryId: string) => {
+      window.dispatchEvent(
+        new CustomEvent("strawberry:open-memory", { detail: { memoryId } })
+      );
+      setView("memory");
+    };
+    return () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (window as any).__strawberry_open_memory;
+    };
+  }, []);
+
   const navigate = (v: View) => {
     if (v === "dashboard") {
       clearSearch();
@@ -58,6 +76,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
       openDialog({ kind: "settings" });
       return;
     }
+    // All "memory_*" sub-views map to the MemoryPanel — the panel
+    // owns its own sub-navigation. Clicking any of them should focus
+    // the relevant sub-section.
     clearSearch();
     setView(v);
   };
@@ -113,6 +134,14 @@ export function AppLayout({ children }: { children: ReactNode }) {
       case "database":    return <DatabaseView />;
       case "docx":        return <DocxView />;
       case "projects":    return <ProjectsView />;
+      case "memory":      return <MemoryPanel />;
+      case "memory_search":      return <MemoryPanel />;
+      case "memory_detail":      return <MemoryPanel />;
+      case "memory_create":      return <MemoryPanel />;
+      case "memory_images":      return <MemoryPanel />;
+      case "memory_credentials": return <MemoryPanel />;
+      case "memory_watchers":    return <MemoryPanel />;
+      case "memory_activity":    return <MemoryPanel />;
       default:            return <DashboardView />;
     }
   })();

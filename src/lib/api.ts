@@ -16,6 +16,202 @@ import type {
   TreeNode,
 } from "./types";
 
+// ─────────────────────── Phase 3: Generic Memory API ────────────────────────
+
+export type MemoryKind =
+  | "working" | "episodic" | "semantic" | "project" | "procedural"
+  | "credential" | "image" | "document" | "block" | "generic";
+
+export type PrivacyLevel =
+  | "public" | "normal" | "sensitive" | "private" | "secret";
+
+export type RedactionState = "none" | "redacted" | "blocked";
+
+export type RelationshipType =
+  | "related_to" | "belongs_to" | "created_from" | "copied_from"
+  | "derived_from" | "source_for" | "screenshot_of" | "captured_during"
+  | "attached_to" | "references" | "part_of" | "produced_by"
+  | "used_with" | "contains" | "parent_of" | "child_of"
+  | "derived_relationship";
+
+export interface Memory {
+  id: string;
+  kind: string;
+  title: string;
+  content: string;
+  source: string;
+  sourceRef: string | null;
+  sourceApplication: string | null;
+  sourceWindow: string | null;
+  sourceWorkspace: string | null;
+  sourceFile: string | null;
+  sourceUrl: string | null;
+  sourceSession: string | null;
+  projectId: string | null;
+  sessionId: string | null;
+  category: string | null;
+  tags: string[];
+  confidence: number;
+  sensitivity: number;
+  privacyLevel: string;
+  redactionState: string;
+  appState: string;
+  createdAtMs: number;
+  updatedAtMs: number;
+  occurredAtMs: number;
+  firstSeenAtMs: number | null;
+  lastSeenAtMs: number | null;
+  lastViewedAtMs: number | null;
+  lastCopiedAtMs: number | null;
+  lastUsedAtMs: number | null;
+  viewCount: number;
+  copyCount: number;
+  useCount: number;
+  parentId: string | null;
+  retentionDays: number | null;
+  contentHash: string | null;
+}
+
+export interface SearchHit {
+  memory: Memory;
+  score: number;
+  matchedVia: string[];
+}
+
+export interface SearchPage {
+  hits: SearchHit[];
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+}
+
+export interface DocBlockLink {
+  id: string;
+  blockId: string;
+  documentId: string;
+  memoryId: string;
+  blockType: string | null;
+  createdAtMs: number;
+}
+
+export interface SecretStoreStatus {
+  available: boolean;
+  backend: string;
+}
+
+export interface Relationship {
+  id: string;
+  fromId: string;
+  toId: string;
+  relType: string;
+  confidence: number;
+  evidence: string | null;
+  observed: boolean;
+  createdAtMs: number;
+}
+
+// ──────────────────────── Credentials ────────────────────────
+
+export interface CredentialMetadata {
+  id: string;
+  service: string;
+  account: string | null;
+  username: string | null;
+  environment: string | null;
+  host: string | null;
+  project: string | null;
+  url: string | null;
+  notes: string | null;
+  secretSet: boolean;
+  lastUsedAtMs: number | null;
+  createdAtMs: number;
+  updatedAtMs: number;
+}
+
+// ──────────────────────── Images ────────────────────────
+
+export type OcrStatus =
+  | "pending" | "queued" | "running" | "done" | "failed"
+  | "unavailable" | "skipped";
+
+export interface ImageAsset {
+  id: string;
+  memoryId: string | null;
+  originalPath: string;
+  thumbnailPath: string | null;
+  mimeType: string | null;
+  width: number | null;
+  height: number | null;
+  byteSize: number | null;
+  caption: string | null;
+  sourceApp: string | null;
+  sourceWindow: string | null;
+  sourceProject: string | null;
+  ocrText: string | null;
+  ocrStatus: string;
+  ocrCompletedAtMs: number | null;
+  thumbnailStatus: string;
+  thumbnailCompletedAtMs: number | null;
+  privacyBlocked: boolean;
+  createdAtMs: number;
+  updatedAtMs: number;
+}
+
+export interface OcrRunResult {
+  imageId: string;
+  status: OcrStatus;
+  text: string | null;
+  engine: string;
+  error: string | null;
+}
+
+// ──────────────────────── Autonomy ────────────────────────
+
+export interface RuntimeSnapshot {
+  mode: "stopped" | "running" | "paused";
+  stats: {
+    mode: string;
+    cyclesTotal: number;
+    cyclesWithAction: number;
+    eventsConsumedTotal: number;
+    lastCycleAtMs: number;
+    worldStateVersion: number;
+    uptimeSecs: number;
+  };
+  worldState: {
+    activeApp: string | null;
+    activeProject: string | null;
+    activeFile: { path: string; project: string | null; ts: number } | null;
+    buildState: string;
+    testState: string;
+    workflowPhase: string;
+    version: number;
+  };
+}
+
+export interface LedgerEntry {
+  id: number;
+  capabilityId: string;
+  decision: string;
+  reason: string;
+  score: number | null;
+  createdAt: string;
+}
+
+export interface GoalCandidate {
+  goalId: number;
+  title: string;
+  description: string;
+  project: string | null;
+  priority: string;
+  confidence: number;
+  evidence: { kind: string; reference: string; summary: string; weight: number }[];
+  status: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
 export async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   try {
     return await invoke<T>(cmd, args ?? {});
@@ -467,6 +663,189 @@ export const api = {
     call<string[]>("ai_list_models", { provider }),
   aiRemoveCredential: (provider: string) =>
     call<void>("ai_remove_credential", { provider }),
+
+  // ─────────────────────── Phase 3: Generic Memory ────────────────────────
+  memoryCreate: (args: {
+    kind: string;
+    title: string;
+    content: string;
+    source: string;
+    project?: string;
+    tags?: string[];
+    sourceApplication?: string;
+    sourceUrl?: string;
+    sourceFile?: string;
+  }) => call<string>("memory_create", { args }),
+
+  memoryGet: (id: string) => call<Memory | null>("memory_get", { id }),
+
+  memoryDelete: (id: string) => call<boolean>("memory_delete", { id }),
+
+  memoryUpdate: (args: {
+    id: string;
+    title?: string;
+    content?: string;
+    kind?: string;
+    tags?: string[];
+    category?: string | null;
+    project?: string | null;
+    session?: string | null;
+    sourceApplication?: string | null;
+    sourceWindow?: string | null;
+    sourceWorkspace?: string | null;
+    sourceFile?: string | null;
+    sourceUrl?: string | null;
+    sourceSession?: string | null;
+    privacyLevel?: string;
+    sensitivity?: number;
+    redactionState?: string;
+    confidence?: number;
+    retentionDays?: number | null;
+    parentId?: string | null;
+    occurredAtMs?: number;
+  }) => call<Memory>("memory_update", { args }),
+
+  memoryRecordView: (id: string) =>
+    call<boolean>("memory_record_view", { id }),
+
+  memoryRecordCopy: (id: string) =>
+    call<boolean>("memory_record_copy", { id }),
+
+  memoryRecordUse: (id: string) =>
+    call<boolean>("memory_record_use", { id }),
+
+  memorySearch: (args: {
+    text: string;
+    kind?: string;
+    project?: string;
+    app?: string;
+    limit?: number;
+    offset?: number;
+  }) => call<SearchPage>("memory_search", { args }),
+
+  memoryCreateRelationship: (args: {
+    fromId: string;
+    toId: string;
+    relType: string;
+    confidence?: number;
+    evidence?: string;
+  }) => call<string>("memory_create_relationship", { args }),
+
+  memoryListRelationships: (id: string) =>
+    call<Relationship[]>("memory_list_relationships", { id }),
+
+  // ─────────────────────── Credentials ────────────────────────
+  credentialCreate: (args: {
+    title: string;
+    service: string;
+    account?: string;
+    username?: string;
+    environment?: string;
+    host?: string;
+    project?: string;
+    url?: string;
+    notes?: string;
+    /** Opaque ciphertext bytes (encrypted by the UI layer). */
+    secretCiphertext?: number[];
+    secretNonce?: number[];
+  }) => call<string>("credential_create", { args }),
+
+  credentialGetMetadata: (id: string) =>
+    call<CredentialMetadata | null>("credential_get_metadata", { id }),
+
+  credentialSearch: (query: string, limit?: number) =>
+    call<CredentialMetadata[]>("credential_search", { query, limit: limit ?? null }),
+
+  /** The ONLY way to read a secret — must be an explicit user action. */
+  credentialReveal: (id: string) =>
+    call<number[] | null>("credential_reveal", { id }),
+
+  credentialUpdateSecret: (id: string, ciphertext: number[], nonce: number[]) =>
+    call<boolean>("credential_update_secret", {
+      id, secretCiphertext: ciphertext, secretNonce: nonce,
+    }),
+
+  credentialDelete: (id: string) =>
+    call<boolean>("credential_delete", { id }),
+
+  // ─────────────────────── Images / OCR ────────────────────────
+  imageRegister: (args: {
+    path: string;
+    mimeType?: string;
+    width?: number;
+    height?: number;
+    byteSize?: number;
+    caption?: string;
+    sourceApp?: string;
+    sourceWindow?: string;
+    sourceProject?: string;
+    privacyBlocked: boolean;
+  }) => call<string>("image_register", { args }),
+
+  imageGet: (id: string) => call<ImageAsset | null>("image_get", { id }),
+
+  imageList: (limit?: number) =>
+    call<ImageAsset[]>("image_list", { limit: limit ?? null }),
+
+  imageDelete: (id: string) => call<boolean>("image_delete", { id }),
+
+  imageSetOcrText: (id: string, text: string) =>
+    call<boolean>("image_set_ocr_text", { id, text }),
+
+  imageMarkOcrFailed: (id: string) =>
+    call<boolean>("image_mark_ocr_failed", { id }),
+
+  imageMarkOcrUnavailable: (id: string) =>
+    call<boolean>("image_mark_ocr_unavailable", { id }),
+
+  /** Run OCR on the next pending image. Returns null if no work. */
+  imageOcrRunNext: () => call<OcrRunResult | null>("image_ocr_run_next"),
+
+  // ─────────────────────── Watchers ────────────────────────
+  watcherStart: (path: string) =>
+    call<string>("watcher_start", { path }),
+
+  watcherStop: (path: string) =>
+    call<string>("watcher_stop", { path }),
+
+  watcherList: () => call<string[]>("watcher_list"),
+
+  watcherCheckPath: (path: string) =>
+    call<boolean>("watcher_check_path", { path }),
+
+  // ─────────────────────── Autonomy observability ────────────────────────
+  autonomyGetStats: () => call<RuntimeSnapshot>("autonomy_get_stats"),
+
+  autonomyGetLedger: (limit?: number) =>
+    call<LedgerEntry[]>("autonomy_get_ledger", { limit: limit ?? null }),
+
+  autonomyGetGoals: (limit?: number) =>
+    call<GoalCandidate[]>("autonomy_get_goals", { limit: limit ?? null }),
+
+  // ─────────────────────── DB overview (extend with memory counts) ─────
+  /** Get a count of memories in the unified_memories table. */
+  memoryCount: () => call<number>("memory_count"),
+
+  // ─────────────────────── DOCX ↔ Memory linking ───────────────────────
+  docxLinkBlockToMemory: (args: {
+    blockId: string;
+    documentId: string;
+    blockType: string | null;
+    memoryId: string;
+  }) => call<DocBlockLink>("docx_link_block_to_memory", { args }),
+
+  docxUnlinkBlockMemory: (blockId: string, memoryId: string) =>
+    call<boolean>("docx_unlink_block_memory", { blockId, memoryId }),
+
+  docxListBlockMemories: (blockId: string) =>
+    call<DocBlockLink[]>("docx_list_block_memories", { blockId }),
+
+  docxListMemoryBlocks: (memoryId: string) =>
+    call<DocBlockLink[]>("docx_list_memory_blocks", { memoryId }),
+
+  // ─────────────────────── Secret store status ───────────────────────
+  credentialSecretStoreStatus: () =>
+    call<SecretStoreStatus>("credential_secret_store_status"),
 };
 
 export namespace wellness {

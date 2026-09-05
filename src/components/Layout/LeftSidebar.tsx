@@ -19,6 +19,7 @@ const NAV: Array<{ id: View; icon: string; label: string; hint: string }> = [
   { id: "story",     icon: "📖", label: "My Story",   hint: "Export narrative" },
   { id: "database",  icon: "🗄️", label: "Database",   hint: "Everything saved — live counts" },
   { id: "docx",      icon: "📄", label: "DOCX",        hint: "Offline paste-to-blocks document workspace" },
+  { id: "memory",    icon: "🧠", label: "Memory",     hint: "Generic memory — search, timeline, relationships" },
 ];
 
 export function LeftSidebar({

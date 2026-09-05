@@ -21,6 +21,7 @@ const MIGRATION_V18: &str = include_str!("../../migrations/018_wellness_seconds.
 const MIGRATION_V19: &str = include_str!("../../migrations/019_capability_ledger.sql");
 const MIGRATION_V20: &str = include_str!("../../migrations/020_ledger_hardening.sql");
 const MIGRATION_V21: &str = include_str!("../../migrations/021_docx.sql");
+const MIGRATION_V22: &str = include_str!("../../migrations/022_generic_memory.sql");
 
 fn apply(tx: &rusqlite::Transaction<'_>, version: i64, sql: &str) -> Result<(), String> {
     tx.execute_batch(sql)
@@ -80,6 +81,7 @@ pub fn run(conn: &mut Connection) -> Result<(), String> {
         (19, MIGRATION_V19),
         (20, MIGRATION_V20),
         (21, MIGRATION_V21),
+        (22, MIGRATION_V22),
     ];
 
     for &(version, sql) in migrations {
@@ -155,6 +157,33 @@ pub fn ensure_fts(conn: &Connection) -> Result<bool, String> {
         set_fts_flag(conn, false)?;
         return Ok(false);
     }
+
+    // Phase 2: also create credential FTS + image OCR FTS + doc block FTS.
+    // They are independent virtual tables so a failure in one does not
+    // block the others; if FTS5 is unavailable, fall back to LIKE.
+    let _ = conn.execute_batch("
+        CREATE VIRTUAL TABLE IF NOT EXISTS credential_fts USING fts5(
+            credential_id UNINDEXED,
+            service, account, username, environment, host, project, notes,
+            tokenize = 'porter unicode61'
+        );
+    ");
+    let _ = conn.execute_batch("
+        CREATE VIRTUAL TABLE IF NOT EXISTS image_ocr_fts USING fts5(
+            image_id UNINDEXED,
+            ocr_text,
+            tokenize = 'porter unicode61'
+        );
+    ");
+    let _ = conn.execute_batch("
+        CREATE VIRTUAL TABLE IF NOT EXISTS doc_block_fts USING fts5(
+            block_id UNINDEXED,
+            document_id UNINDEXED,
+            block_type UNINDEXED,
+            text,
+            tokenize = 'porter unicode61'
+        );
+    ");
 
     set_fts_flag(conn, true)?;
     Ok(true)
@@ -286,7 +315,7 @@ mod tests {
         let versions: i64 = conn
             .query_row("SELECT count(*) FROM schema_migrations", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(versions, 21);
+        assert_eq!(versions, 22);
     }
 
     /// Full migration chain produces all critical tables, indexes, and triggers.

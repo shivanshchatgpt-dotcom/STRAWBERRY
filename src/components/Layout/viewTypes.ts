@@ -16,4 +16,12 @@ export type View =
   | "database"
   | "projects"
   | "docx"
+  | "memory"
+  | "memory_search"
+  | "memory_detail"
+  | "memory_create"
+  | "memory_images"
+  | "memory_credentials"
+  | "memory_watchers"
+  | "memory_activity"
   | "settings";

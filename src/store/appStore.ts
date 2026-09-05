@@ -78,6 +78,8 @@ interface AppState {
   searchScope: SearchScope | null;
   searchResults: UnifiedSearchItem[] | null;
   searching: boolean;
+  searchMemoryOffset: number;
+  searchMemoryHasMore: boolean;
 
   // ui
   dialog: DialogState;
@@ -127,6 +129,7 @@ interface AppState {
   setSearchQuery: (q: string) => void;
   setSearchScope: (scope: SearchScope) => void;
   runSearch: () => Promise<void>;
+  loadMoreSearch: () => Promise<void>;
   clearSearch: () => void;
 
   openDialog: (d: DialogState) => void;
@@ -218,6 +221,8 @@ export const useAppStore = create<AppState>((set, get) => {
     searchScope: null,
     searchResults: null,
     searching: false,
+    searchMemoryOffset: 0,
+    searchMemoryHasMore: false,
 
     dialog: { kind: "none" },
     toasts: [],
@@ -658,14 +663,76 @@ export const useAppStore = create<AppState>((set, get) => {
     runSearch: async () => {
       const q = get().searchQuery.trim();
       if (!q) {
-        set({ searchResults: null });
+        set({ searchResults: null, searchMemoryOffset: 0, searchMemoryHasMore: false });
         return;
       }
+      set({ searching: true, searchMemoryOffset: 0, searchMemoryHasMore: false });
+      try {
+        const legacyPromise = api.searchAll(q);
+        const memoryPromise = api
+          .memorySearch({ text: q, limit: 50, offset: 0 })
+          .then((page): UnifiedSearchItem[] => {
+            set({ searchMemoryHasMore: page.hasMore });
+            return page.hits.map((h) => ({
+              kind: "memory",
+              entityId: h.memory.id,
+              title: h.memory.title,
+              snippet:
+                h.memory.content.slice(0, 160) +
+                (h.memory.content.length > 160 ? "…" : ""),
+              location:
+                h.memory.projectId ??
+                h.memory.sourceApplication ??
+                `memory/${h.memory.kind}`,
+              emoji: "🧠",
+              createdAt: new Date(h.memory.createdAtMs).toISOString(),
+            }));
+          })
+          .catch((): UnifiedSearchItem[] => []);
+        const [results, memoryItems] = await Promise.all([
+          legacyPromise,
+          memoryPromise,
+        ]);
+        set({ searchResults: [...results, ...memoryItems], searchMemoryOffset: memoryItems.length });
+      } catch (e) {
+        fail(e);
+      } finally {
+        set({ searching: false });
+      }
+    },
+
+    loadMoreSearch: async () => {
+      const q = get().searchQuery.trim();
+      if (!q || !get().searchMemoryHasMore || get().searching) return;
       set({ searching: true });
       try {
-        // Unified search: chats + todos + habits + events + insights + alpha.
-        const results = await api.searchAll(q);
-        set({ searchResults: results });
+        const offset = get().searchMemoryOffset;
+        const memoryResults = await api
+          .memorySearch({ text: q, limit: 50, offset })
+          .then((page): UnifiedSearchItem[] => {
+            set({ searchMemoryHasMore: page.hasMore });
+            return page.hits.map((h) => ({
+              kind: "memory",
+              entityId: h.memory.id,
+              title: h.memory.title,
+              snippet:
+                h.memory.content.slice(0, 160) +
+                (h.memory.content.length > 160 ? "…" : ""),
+              location:
+                h.memory.projectId ??
+                h.memory.sourceApplication ??
+                `memory/${h.memory.kind}`,
+              emoji: "🧠",
+              createdAt: new Date(h.memory.createdAtMs).toISOString(),
+            }));
+          })
+          .catch((): UnifiedSearchItem[] => []);
+        if (memoryResults.length > 0) {
+          set((s) => ({
+            searchResults: [...(s.searchResults ?? []), ...memoryResults],
+            searchMemoryOffset: s.searchMemoryOffset + memoryResults.length,
+          }));
+        }
       } catch (e) {
         fail(e);
       } finally {
@@ -674,7 +741,7 @@ export const useAppStore = create<AppState>((set, get) => {
     },
 
     clearSearch: () => {
-      set({ searchQuery: "", searchResults: null, searchScope: null });
+      set({ searchQuery: "", searchResults: null, searchScope: null, searchMemoryOffset: 0, searchMemoryHasMore: false });
     },
 
     // -------------------------------------------------------------------- ui

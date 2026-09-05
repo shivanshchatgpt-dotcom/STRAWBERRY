@@ -309,3 +309,68 @@ pub async fn get_capability_ledger(
     })
     .await
 }
+
+// ─────────────────── Read-only observability for the UI ───────────────────
+
+/// Read-only stats endpoint for the UI.
+#[tauri::command]
+pub async fn autonomy_get_stats(
+    state: tauri::State<'_, std::sync::Arc<AppState>>,
+    runtime: tauri::State<'_, AutonomyRuntime>,
+) -> Cmd<RuntimeSnapshot> {
+    let _ = state; // touch state to silence unused warning
+    Ok(RuntimeSnapshot {
+        mode: runtime.mode(),
+        stats: runtime.stats(),
+        world_state: runtime.world_state(),
+    })
+}
+
+#[tauri::command]
+pub async fn autonomy_get_ledger(
+    state: tauri::State<'_, std::sync::Arc<AppState>>,
+    limit: Option<usize>,
+) -> Cmd<Vec<crate::autonomous::ledger::LedgerRow>> {
+    let st = state.inner().clone();
+    let limit = limit.unwrap_or(50);
+    super::blocking(st, move |app| {
+        let conn = app.conn.lock().map_err(|_| crate::error::ERR_DB_LOCK.to_string())?;
+        let mut stmt = conn.prepare(
+            "SELECT id, capability_id, decision, reason, score, created_at
+             FROM autonomy_decisions ORDER BY id DESC LIMIT ?1"
+        ).map_err(|e| e.to_string())?;
+        let rows = stmt.query_map(rusqlite::params![limit as i64], |r| {
+            Ok(crate::autonomous::ledger::LedgerRow {
+                id: r.get(0)?,
+                capability_id: r.get(1)?,
+                decision: r.get(2)?,
+                reason: r.get(3)?,
+                score: r.get(4)?,
+                created_at: r.get(5)?,
+            })
+        }).map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| e.to_string())?);
+        }
+        Ok(out)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn autonomy_get_goals(
+    state: tauri::State<'_, std::sync::Arc<AppState>>,
+    limit: Option<usize>,
+) -> Cmd<Vec<crate::autonomous::goal::GoalCandidate>> {
+    let st = state.inner().clone();
+    let limit = limit.unwrap_or(20);
+    super::blocking(st, move |app| {
+        let conn = app.conn.lock().map_err(|_| crate::error::ERR_DB_LOCK.to_string())?;
+        crate::autonomous::goal::generate(&conn).map(|mut g| {
+            g.truncate(limit);
+            g
+        })
+    })
+    .await
+}

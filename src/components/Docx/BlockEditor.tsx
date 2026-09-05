@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { docx } from "../../lib/api";
+import { BlockLinkPanel } from "./BlockLinkPanel";
 
 /**
  * 📄 BlockEditor — the DOCX block canvas.
@@ -17,6 +18,66 @@ import type { docx } from "../../lib/api";
 
 const uid = () =>
   "b" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+
+function extractBlockText(block: docx.Block): { title: string; content: string } {
+  const data = block.data as Record<string, unknown>;
+  switch (block.type) {
+    case "text":
+    case "heading":
+    case "callout": {
+      const html = String(data.html ?? "");
+      const text = html.replace(/<[^>]*>/g, "").trim();
+      return {
+        title: text.slice(0, 60) || `Block ${block.type}`,
+        content: text,
+      };
+    }
+    case "code": {
+      const code = String(data.code ?? "");
+      return { title: `Code: ${code.slice(0, 40)}`, content: code };
+    }
+    case "formula": {
+      const latex = String(data.latex ?? "");
+      return { title: `Formula: ${latex.slice(0, 40)}`, content: latex };
+    }
+    case "table": {
+      const rows = (data.rows as string[][] | undefined) ?? [];
+      const text = rows.map((r) => r.join(" | ")).join("\n");
+      return { title: "Table block", content: text };
+    }
+    case "todo": {
+      const tasks = (data.tasks as docx.TodoTask[] | undefined) ?? [];
+      const text = tasks.map((t) => `${t.done ? "[x]" : "[ ]"} ${t.text}`).join("\n");
+      return { title: String(data.bannerText ?? "Todo list"), content: text };
+    }
+    case "tree": {
+      const root = data.root as docx.TreeNode | undefined;
+      const text = flattenTree(root);
+      return { title: "Tree structure", content: text };
+    }
+    case "chart": {
+      const rows = (data.data as string[][] | undefined) ?? [];
+      const text = rows.map((r) => r.join(", ")).join("\n");
+      return { title: String(data.title ?? "Chart"), content: text };
+    }
+    case "image": {
+      const alt = String(data.alt ?? "Image");
+      return { title: alt, content: alt };
+    }
+    default:
+      return { title: `Block ${block.type}`, content: "" };
+  }
+}
+
+function flattenTree(node: docx.TreeNode | undefined, depth = 0): string {
+  if (!node) return "";
+  const indent = "  ".repeat(depth);
+  let result = `${indent}${node.text}\n`;
+  for (const child of node.children) {
+    result += flattenTree(child, depth + 1);
+  }
+  return result;
+}
 
 interface DragState {
   dragId: string | null;
@@ -222,6 +283,29 @@ export function BlockEditor({
           </div>
           <div className="docx-block-body">
             <BlockView block={b} update={(d) => updateBlock(b.id, d)} allBlocks={doc.blocks} />
+            {selectedId === b.id && (() => {
+              const { title, content } = extractBlockText(b);
+              return (
+              <BlockLinkPanel
+                blockId={b.id}
+                documentId={doc.id}
+                blockType={b.type}
+                blockContent={content}
+                blockTitle={title}
+                onNavigateToMemory={(memoryId) => {
+                  try {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const w = window as any;
+                    if (w.__strawberry_open_memory) {
+                      w.__strawberry_open_memory(memoryId);
+                    }
+                  } catch {
+                    /* navigation hook not installed — ignore */
+                  }
+                }}
+              />
+              );
+            })()}
           </div>
         </div>
       ))}
