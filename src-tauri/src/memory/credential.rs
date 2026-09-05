@@ -296,14 +296,7 @@ pub fn delete_credential(conn: &Connection, id: &str) -> Result<bool, String> {
 mod tests {
     use super::*;
 
-    fn init_test_store() {
-        secret_store::install_secret_store(std::sync::Arc::new(
-            secret_store::InMemoryStore::new(true),
-        ));
-    }
-
     fn setup() -> Connection {
-        init_test_store();
         let mut conn = Connection::open_in_memory().unwrap();
         crate::db::migrations::run(&mut conn).unwrap();
         crate::db::migrations::ensure_fts(&conn).unwrap();
@@ -313,20 +306,23 @@ mod tests {
     #[test]
     fn create_credential_indexes_metadata_only() {
         let conn = setup();
-        let id = create_credential(
-            &conn,
-            "My Example Credential",
-            "ExampleService",
-            Some("ExampleAccount"),
-            Some("user1"),
-            Some("production"),
-            Some("example.com"),
-            Some("MyProject"),
-            Some("https://example.com"),
-            Some("some notes"),
-            Some(b"TEST_SECRET_VALUE_bytes"),
-            Some(b"nonce123"),
-        ).unwrap();
+        let store = std::sync::Arc::new(secret_store::InMemoryStore::new(true));
+        let id = secret_store::with_test_store(store.clone(), || {
+            create_credential(
+                &conn,
+                "My Example Credential",
+                "ExampleService",
+                Some("ExampleAccount"),
+                Some("user1"),
+                Some("production"),
+                Some("example.com"),
+                Some("MyProject"),
+                Some("https://example.com"),
+                Some("some notes"),
+                Some(b"TEST_SECRET_VALUE_bytes"),
+                Some(b"nonce123"),
+            ).unwrap()
+        });
         let meta = get_metadata(&conn, &id).unwrap().unwrap();
         assert_eq!(meta.service, "ExampleService");
         assert_eq!(meta.account.as_deref(), Some("ExampleAccount"));
@@ -336,13 +332,16 @@ mod tests {
     #[test]
     fn search_finds_credential_by_service_metadata() {
         let conn = setup();
-        create_credential(
-            &conn, "Cred", "ExampleService", Some("ExampleAccount"),
-            None, None, Some("host1.example.com"),
-            Some("MyProject"), None, None,
-            Some(b"TEST_SECRET_VALUE"),
-            Some(b"nonce"),
-        ).unwrap();
+        let store = std::sync::Arc::new(secret_store::InMemoryStore::new(true));
+        secret_store::with_test_store(store, || {
+            create_credential(
+                &conn, "Cred", "ExampleService", Some("ExampleAccount"),
+                None, None, Some("host1.example.com"),
+                Some("MyProject"), None, None,
+                Some(b"TEST_SECRET_VALUE"),
+                Some(b"nonce"),
+            ).unwrap();
+        });
         let results = search_metadata(&conn, "ExampleService", 10).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].service, "ExampleService");
@@ -352,10 +351,13 @@ mod tests {
     fn search_never_exposes_secret() {
         let conn = setup();
         let secret = b"TEST_SECRET_VALUE_do_not_expose";
-        create_credential(
-            &conn, "Cred", "ExampleService", None, None, None, None,
-            None, None, None, Some(secret), Some(b"nonce"),
-        ).unwrap();
+        let store = std::sync::Arc::new(secret_store::InMemoryStore::new(true));
+        secret_store::with_test_store(store, || {
+            create_credential(
+                &conn, "Cred", "ExampleService", None, None, None, None,
+                None, None, None, Some(secret), Some(b"nonce"),
+            ).unwrap();
+        });
         let results = search_metadata(&conn, "ExampleService", 10).unwrap();
         let json = serde_json::to_string(&results).unwrap();
         assert!(!json.contains("TEST_SECRET_VALUE"),
@@ -366,10 +368,13 @@ mod tests {
     fn reveal_returns_secret_bytes() {
         let conn = setup();
         let secret = b"my_secret_payload";
-        let id = create_credential(
-            &conn, "Cred", "Service", None, None, None, None, None, None, None,
-            Some(secret), Some(b"n1"),
-        ).unwrap();
+        let store = std::sync::Arc::new(secret_store::InMemoryStore::new(true));
+        let id = secret_store::with_test_store(store, || {
+            create_credential(
+                &conn, "Cred", "Service", None, None, None, None, None, None, None,
+                Some(secret), Some(b"n1"),
+            ).unwrap()
+        });
         let revealed = reveal_secret(&conn, &id).unwrap().unwrap();
         // Reveal returns secret + nonce combined; the test should
         // observe both parts are present.
@@ -379,10 +384,13 @@ mod tests {
     #[test]
     fn reveal_stamps_last_used() {
         let conn = setup();
-        let id = create_credential(
-            &conn, "Cred", "Service", None, None, None, None, None, None, None,
-            Some(b"x"), Some(b"n"),
-        ).unwrap();
+        let store = std::sync::Arc::new(secret_store::InMemoryStore::new(true));
+        let id = secret_store::with_test_store(store, || {
+            create_credential(
+                &conn, "Cred", "Service", None, None, None, None, None, None, None,
+                Some(b"x"), Some(b"n"),
+            ).unwrap()
+        });
         assert!(get_metadata(&conn, &id).unwrap().unwrap().last_used_at_ms.is_none());
         reveal_secret(&conn, &id).unwrap();
         assert!(get_metadata(&conn, &id).unwrap().unwrap().last_used_at_ms.is_some());
@@ -391,11 +399,16 @@ mod tests {
     #[test]
     fn update_secret_overwrites() {
         let conn = setup();
-        let id = create_credential(
-            &conn, "Cred", "Service", None, None, None, None, None, None, None,
-            Some(b"old"), Some(b"n1"),
-        ).unwrap();
-        update_secret(&conn, &id, b"new", b"n2").unwrap();
+        let store = std::sync::Arc::new(secret_store::InMemoryStore::new(true));
+        let id = secret_store::with_test_store(store.clone(), || {
+            create_credential(
+                &conn, "Cred", "Service", None, None, None, None, None, None, None,
+                Some(b"old"), Some(b"n1"),
+            ).unwrap()
+        });
+        secret_store::with_test_store(store, || {
+            update_secret(&conn, &id, b"new", b"n2").unwrap();
+        });
         let revealed = reveal_secret(&conn, &id).unwrap().unwrap();
         assert!(revealed.starts_with(b"new"));
     }
@@ -403,12 +416,17 @@ mod tests {
     #[test]
     fn delete_cascades() {
         let conn = setup();
-        let id = create_credential(
-            &conn, "Cred", "Service", None, None, None, None, None, None, None,
-            Some(b"x"), Some(b"n"),
-        ).unwrap();
+        let store = std::sync::Arc::new(secret_store::InMemoryStore::new(true));
+        let id = secret_store::with_test_store(store.clone(), || {
+            create_credential(
+                &conn, "Cred", "Service", None, None, None, None, None, None, None,
+                Some(b"x"), Some(b"n"),
+            ).unwrap()
+        });
         assert!(search_metadata(&conn, "Service", 10).unwrap().len() == 1);
-        delete_credential(&conn, &id).unwrap();
+        secret_store::with_test_store(store, || {
+            delete_credential(&conn, &id).unwrap();
+        });
         assert!(search_metadata(&conn, "Service", 10).unwrap().is_empty());
         assert!(get_metadata(&conn, &id).unwrap().is_none());
     }
@@ -417,10 +435,13 @@ mod tests {
     fn secret_never_lands_in_db_blob() {
         let conn = setup();
         let secret = b"DATABASE_LEAK_TEST_secret_value";
-        let id = create_credential(
-            &conn, "T", "S", None, None, None, None, None, None, None,
-            Some(secret), Some(b"nonce"),
-        ).unwrap();
+        let store = std::sync::Arc::new(secret_store::InMemoryStore::new(true));
+        let id = secret_store::with_test_store(store, || {
+            create_credential(
+                &conn, "T", "S", None, None, None, None, None, None, None,
+                Some(secret), Some(b"nonce"),
+            ).unwrap()
+        });
         // Scan the entire DB row for the secret bytes. Must not be found.
         let row_blob: Option<Vec<u8>> = conn
             .query_row(
@@ -439,13 +460,18 @@ mod tests {
     #[test]
     fn deletion_removes_secret_from_store() {
         let conn = setup();
-        let id = create_credential(
-            &conn, "T", "S", None, None, None, None, None, None, None,
-            Some(b"delete-me-secret"), Some(b"n"),
-        ).unwrap();
+        let store = std::sync::Arc::new(secret_store::InMemoryStore::new(true));
+        let id = secret_store::with_test_store(store.clone(), || {
+            create_credential(
+                &conn, "T", "S", None, None, None, None, None, None, None,
+                Some(b"delete-me-secret"), Some(b"n"),
+            ).unwrap()
+        });
         // Confirm the secret is in the store.
         assert!(reveal_secret(&conn, &id).unwrap().is_some());
-        delete_credential(&conn, &id).unwrap();
+        secret_store::with_test_store(store, || {
+            delete_credential(&conn, &id).unwrap();
+        });
         // After deletion, reveal should not return the secret.
         let res = reveal_secret(&conn, &id);
         // Either the metadata row is gone (Ok(None)) or the store has no entry.
