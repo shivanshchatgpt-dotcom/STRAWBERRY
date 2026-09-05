@@ -295,17 +295,11 @@ pub fn delete_credential(conn: &Connection, id: &str) -> Result<bool, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Once;
 
-    // Install the in-memory secret store exactly once for all credential
-    // tests in this module. OnceLock guarantees idempotency.
-    static INIT: Once = Once::new();
     fn init_test_store() {
-        INIT.call_once(|| {
-            secret_store::install_secret_store(std::sync::Arc::new(
-                secret_store::InMemoryStore::new(true),
-            ));
-        });
+        secret_store::install_secret_store(std::sync::Arc::new(
+            secret_store::InMemoryStore::new(true),
+        ));
     }
 
     fn setup() -> Connection {

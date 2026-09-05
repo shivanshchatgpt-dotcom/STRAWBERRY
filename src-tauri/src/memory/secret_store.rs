@@ -267,8 +267,7 @@ where
     if let Some(p) = prev {
         install_secret_store(p);
     } else {
-        // Reset to default by clearing.
-        *SECRET_STORE.write().unwrap() = None;
+        install_secret_store(std::sync::Arc::new(InMemoryStore::new(true)));
     }
     result
 }

@@ -65,7 +65,7 @@ pub fn run() {
             let ghost_state_for_path = app.state::<Arc<AppState>>().inner().clone();
             let autonomy_db_path = ghost_state_for_path.db_path();
             let runtime_state_path = ghost_state_for_path.data_dir.join("runtime_state.json");
-            let autonomy = AutonomyRuntime::restore(&runtime_state_path);
+            let autonomy = Arc::new(AutonomyRuntime::restore(&runtime_state_path));
             let autonomy_for_thread = autonomy.clone();
             let autonomy_shutdown = Arc::new(AtomicBool::new(false));
             app.manage(autonomy);
