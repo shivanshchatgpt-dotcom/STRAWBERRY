@@ -1,23 +1,28 @@
+```
+# Build artifacts
+target/
+**/*.rs.bk
+
 # Dependencies
-node_modules/
+Cargo.lock
+**/vendor/
 
-# Build output
-dist/
-src-tauri/target/
-src-tauri/gen/schemas/
-
-# Logs
+# Logs and temp files
 *.log
-npm-debug.log*
+*.tmp
 
-# OS / editor
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
 .DS_Store
 Thumbs.db
-.vscode/*
-!.vscode/extensions.json
-.idea/
-
-# Local env
-.env
-.env.*
-target/
+```
